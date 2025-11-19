@@ -19,7 +19,7 @@ router.post(
     body("subject").notEmpty().trim().withMessage("Subject is required"),
     body("message").notEmpty().trim().withMessage("Message is required"),
   ],
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
