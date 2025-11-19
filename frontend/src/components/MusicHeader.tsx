@@ -161,7 +161,7 @@ const MusicHeader = () => {
               )}
             </button>
             <div className="text-gray-400 dark:text-gray-500 text-xs">
-              © 2025 Luke Files
+              2025 Luke Files
             </div>
           </div>
         </div>
