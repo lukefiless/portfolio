@@ -1,0 +1,11 @@
+Model Information:
+* title:	Cartoon office worker
+* source:	https://sketchfab.com/3d-models/cartoon-office-worker-92fc38f1cbcc41d1933d0d1e9e117a6a
+* author:	DaniloRocha (https://sketchfab.com/DaniloRocha)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Cartoon office worker" (https://sketchfab.com/3d-models/cartoon-office-worker-92fc38f1cbcc41d1933d0d1e9e117a6a) by DaniloRocha (https://sketchfab.com/DaniloRocha) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
