@@ -373,6 +373,49 @@ const Projects = () => {
             </div>
           </div>
         ))}
+
+        {/* Asset attributions. CC BY requires credit wherever the work is
+            shared. The deep bottom padding is deliberate: this column is
+            absolutely positioned, so the page's own padding does not push it
+            clear of the fixed player bar. */}
+        <footer
+          className="px-8 pt-12 pb-36"
+          style={{ backgroundColor: isDarkMode ? "#111827" : "#f9fafb" }}
+        >
+          <p
+            className="mx-auto max-w-2xl text-center text-xs leading-relaxed"
+            style={{ color: isDarkMode ? "#9ca3af" : "#6b7280" }}
+          >
+            3D character model:{" "}
+            <a
+              href="https://sketchfab.com/3d-models/cartoon-office-worker-92fc38f1cbcc41d1933d0d1e9e117a6a"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:opacity-80"
+            >
+              &ldquo;Cartoon office worker&rdquo;
+            </a>{" "}
+            by{" "}
+            <a
+              href="https://sketchfab.com/DaniloRocha"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:opacity-80"
+            >
+              DaniloRocha
+            </a>
+            , licensed under{" "}
+            <a
+              href="https://creativecommons.org/licenses/by/4.0/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:opacity-80"
+            >
+              CC BY 4.0
+            </a>
+            .
+          </p>
+        </footer>
       </div>
 
       {/* Project Navigation Dots */}

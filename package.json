@@ -12,6 +12,7 @@
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
   },
   "devDependencies": {
+    "@types/three": "^0.185.4",
     "concurrently": "^8.2.2"
   },
   "keywords": [
@@ -22,5 +23,8 @@
     "fullstack"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.185.1"
+  }
 }
