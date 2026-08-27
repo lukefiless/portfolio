@@ -26,10 +26,12 @@ import * as THREE from "three";
 
 import type { Act } from "./act";
 
+import { SAGE_HEX } from "../palette";
+
 import { createGearGeometry, meshPhase, pitchRadius } from "../parts/gear";
 
 const MODULE = 0.2;
-const THICKNESS = 0.55;
+const THICKNESS = 1;
 
 export const TEETH_MIN = 13;
 export const TEETH_MAX = 43;
@@ -86,6 +88,13 @@ export interface CogState {
  */
 export type CogAct = Act<CogState>;
 
+/**
+ * Builds the shaft, the driver gear and the four-gear train hanging off it.
+ *
+ * Driver geometries are built ONCE PER TOOTH COUNT and cached, because the
+ * slide sweeps continuously through the whole range and rebuilding an extruded
+ * gear every frame would stall. The cache is what `dispose` clears.
+ */
 export function createCogAct(): CogAct {
   const root = new THREE.Group();
 
@@ -145,7 +154,7 @@ export function createCogAct(): CogAct {
 
   const markerMaterial = new THREE.MeshStandardMaterial({
     color: 0x000000,
-    emissive: new THREE.Color(0x79f7ff),
+    emissive: new THREE.Color(SAGE_HEX),
     /*
      * Just over the bloom threshold, not far over.
      *
@@ -154,7 +163,7 @@ export function createCogAct(): CogAct {
      * stopped being visible at all. A reference mark has to be findable, not
      * the brightest thing in the room.
      */
-    emissiveIntensity: 3.0,
+    emissiveIntensity: 1.0,
     roughness: 0.5,
   });
 
@@ -232,6 +241,14 @@ export function createCogAct(): CogAct {
   /* Scratch, so the loop allocates nothing. */
   const centre = new THREE.Vector2();
 
+  /**
+   * One frame. `driverTeeth` is the only control: the shaft speed never changes,
+   * so growing the driver is what accelerates everything downstream.
+   *
+   * Swapping the driver mid-turn would jump the teeth out of mesh, so a
+   * correction angle is carried and eased whenever the tooth count changes —
+   * that is what `meshCorrection` is for.
+   */
   const update = (delta: number, target: CogState) => {
     const teethFloat = THREE.MathUtils.clamp(
       target.driverTeeth,

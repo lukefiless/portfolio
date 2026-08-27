@@ -67,6 +67,7 @@ function locate<T>(track: readonly Keyframe<T>[], time: number): Span {
   };
 }
 
+/** A number at time `t` — eased between the surrounding keyframes. */
 export function sampleScalar(
   track: readonly Keyframe<number>[],
   time: number
@@ -76,6 +77,13 @@ export function sampleScalar(
   return THREE.MathUtils.lerp(track[from].value, track[to].value, blend);
 }
 
+/**
+ * A position at time `t`, written into `out` and returned.
+ *
+ * Takes an `out` vector rather than returning a fresh one because this is
+ * called several times per frame from the render loop, where allocating is
+ * the mistake the whole codebase is written to avoid.
+ */
 export function sampleVec3(
   track: readonly Keyframe<Vec3>[],
   time: number,
@@ -88,6 +96,7 @@ export function sampleVec3(
     .lerp(scratch.fromArray(track[to].value), blend);
 }
 
+/** A colour at time `t`, written into `out`. Blended in RGB. */
 export function sampleColor(
   track: readonly Keyframe<string>[],
   time: number,

@@ -79,7 +79,7 @@ const collector = () => {
  * inspected — and the radius is capped against the smallest dimension so a
  * thin panel cannot be handed a radius that turns it into a lozenge.
  */
-const body = (w: number, h: number, d: number, radius = 0.05) =>
+export const body = (w: number, h: number, d: number, radius = 0.05) =>
   new RoundedBoxGeometry(w, h, d, 2, Math.min(radius, Math.min(w, h, d) / 2.2));
 
 export interface RackOptions {

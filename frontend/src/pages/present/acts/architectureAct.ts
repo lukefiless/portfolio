@@ -28,6 +28,8 @@ import * as THREE from "three";
 
 import type { Act } from "./act";
 
+import { GOLD_HEX, SAGE_HEX } from "../palette";
+
 import { clamp01, smootherstep } from "../parts/easing";
 
 const COLS = 4;
@@ -51,14 +53,22 @@ export interface ArchitectureState {
  */
 export type ArchitectureAct = Act<ArchitectureState>;
 
+/**
+ * Builds one instanced mesh of COUNT boxes, plus the rail behind them.
+ *
+ * There is only ever one set of boxes. The monolith and the grid are two
+ * layouts of the SAME instances, and `ordered` blends each box between its
+ * jumbled pose and its slot in the grid — which is why the transition reads as
+ * the thing reorganising rather than one object replacing another.
+ */
 export function createArchitectureAct(): ArchitectureAct {
   const root = new THREE.Group();
 
   root.position.set(0, 1.6, 0);
   root.rotation.y = -0.22;
 
-  const accent = new THREE.Color(0x8ea2ff);
-  const tangled = new THREE.Color(0xff9d4d);
+  const accent = new THREE.Color(SAGE_HEX);
+  const tangled = new THREE.Color(GOLD_HEX);
 
   /* ------------------------------------------------------------- containers */
 
@@ -166,6 +176,11 @@ export function createArchitectureAct(): ArchitectureAct {
 
   let elapsed = 0;
 
+  /**
+   * One frame. `ordered` blends every box from its monolith pose to its grid
+   * slot, and takes the lamps from permanently-on to waking on their own
+   * schedule.
+   */
   const update = (delta: number, target: ArchitectureState) => {
     elapsed += delta;
 
@@ -211,6 +226,7 @@ export function createArchitectureAct(): ArchitectureAct {
        */
       const churnLevel = 0.5 + Math.sin(elapsed * 7 + churnPhase[i]) * 0.18;
 
+      /* Each container's own schedule: 0 is the moment it wakes. */
       const beat = (elapsed / beatPeriod[i] + beatOffset[i]) % 1;
       const scheduled = Math.max(0, 1 - beat * 7) ** 1.6;
 

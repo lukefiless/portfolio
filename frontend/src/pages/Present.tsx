@@ -3,21 +3,55 @@ import * as THREE from "three";
 
 import { createCogAct } from "./present/acts/cogAct";
 import { createArchitectureAct } from "./present/acts/architectureAct";
-import { createDataGapAct } from "./present/acts/dataGapAct";
+import { createPuzzleAct } from "./present/acts/puzzleAct";
 import { createLocalAiAct } from "./present/acts/localAiAct";
 import { createOwnedAct } from "./present/acts/ownedAct";
 import BlueprintPanel from "./present/BlueprintPanel";
-import { createFunnelAct } from "./present/acts/funnelAct";
+import SynopsisPanel from "./present/SynopsisPanel";
+import MarketPanel from "./present/MarketPanel";
+import NotesPanel, { paperEdge } from "./present/NotesPanel";
+import { createBoatAct } from "./present/acts/boatAct";
+import { createCabinetAct } from "./present/acts/cabinetAct";
 import { createProjectsAct } from "./present/acts/projectsAct";
 import { createPipelineAct } from "./present/acts/pipelineAct";
 import { createStage } from "./present/stage";
 import { firstSlide, slides } from "./present/slides";
+import { TEXT } from "./present/palette";
 import {
   sampleColor,
   sampleIndex,
   sampleScalar,
   sampleVec3,
 } from "./present/timeline";
+
+/*
+ * FITTING AN ACT ONTO THE RIGHT LEAF
+ *
+ * A folder lying open gives its left leaf to the paper, so an act composed
+ * for the whole frame ends up half underneath the sheet — and merely sliding
+ * it sideways does not help, because it is still full-frame WIDE. It has to
+ * be shrunk into what the paper leaves as well as moved into it.
+ *
+ * Both happen in the projection matrix, via `setViewOffset`, and neither
+ * touches an act or a slide. Every act keeps the pose its own keyframes give
+ * it and every camera track keeps its numbers; what changes is the window
+ * they are seen through. The alternative was four acts' worth of hand-tuned
+ * positions that would need retuning the day the sheet changed size.
+ */
+
+/** Clearance between the sheet's right edge and the act. */
+const ACT_GUTTER = 0.025;
+
+/** Where the act's box stops, as a fraction of frame width. */
+const ACT_RIGHT = 0.99;
+
+/**
+ * How far the act rides above centre, as a fraction of frame height.
+ *
+ * The caption sits at the foot of the same leaf, so the act gives it room the
+ * way it always did on a full frame — see `atBottom` below.
+ */
+const ACT_LIFT = 0.045;
 
 export default function Page() {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -26,6 +60,17 @@ export default function Page() {
 
   const [index, setIndex] = useState(0);
   const [copyIndex, setCopyIndex] = useState(0);
+
+  /*
+   * True while the file beat is running and the cabinet, not the slide's own
+   * act, is what the room is looking at.
+   *
+   * The render loop owns this, but `goTo` sets it too. If it were left to
+   * the loop alone there would be one frame after every click where React
+   * had already drawn the new slide's sheet and headline and the canvas was
+   * still showing a drawer — a flash of the answer over the question.
+   */
+  const [entering, setEntering] = useState(Boolean(firstSlide.entry));
 
   /*
    * Bumping this restarts the active slide's timeline. The render loop
@@ -37,20 +82,24 @@ export default function Page() {
     restartRef.current += 1;
   }, []);
 
+  /** Jump to a slide by index, clamped, and play its timeline from the top. */
   const goTo = useCallback((requested: number) => {
     const nextIndex = Math.max(0, Math.min(slides.length - 1, requested));
 
     indexRef.current = nextIndex;
     setIndex(nextIndex);
+    setEntering(Boolean(slides[nextIndex].entry));
 
     /* Landing on a slide plays its timeline from the top. */
     restartRef.current += 1;
   }, []);
 
+  /** Forward one slide. Bound to click, space, arrows and wheel-down. */
   const next = useCallback(() => {
     goTo(indexRef.current + 1);
   }, [goTo]);
 
+  /** Back one slide. */
   const previous = useCallback(() => {
     goTo(indexRef.current - 1);
   }, [goTo]);
@@ -132,19 +181,21 @@ export default function Page() {
     const cogAct = createCogAct();
     const pipelineAct = createPipelineAct();
     const architectureAct = createArchitectureAct();
-    const onboardingAct = createFunnelAct();
+    const boatAct = createBoatAct();
+    const cabinetAct = createCabinetAct();
     const projectsAct = createProjectsAct();
-    const dataGapAct = createDataGapAct();
+    const puzzleAct = createPuzzleAct();
     const localAiAct = createLocalAiAct();
     const ownedAct = createOwnedAct();
 
     scene.add(
+      cabinetAct.root,
       cogAct.root,
       pipelineAct.root,
       architectureAct.root,
-      onboardingAct.root,
+      boatAct.root,
       projectsAct.root,
-      dataGapAct.root,
+      puzzleAct.root,
       localAiAct.root,
       ownedAct.root
     );
@@ -160,8 +211,14 @@ export default function Page() {
 
     /* Seconds elapsed within the current slide's timeline. */
     let slideTime = 0;
+
+    /* Whether the act is framed to the right leaf, and at what canvas size. */
+    let leafApplied = false;
+    let leafWidth = 0;
+    let leafHeight = 0;
     let seenRestart = restartRef.current;
     let seenCopy = -1;
+    let seenEntering: boolean | null = null;
 
     const resize = () => {
       stage.resize(mount.clientWidth, mount.clientHeight);
@@ -187,92 +244,248 @@ export default function Page() {
          *
          * Both failures are real. The pipeline hands over to its automated
          * half on a trip boundary, which is only a boundary if both clocks
-         * started together; and the onboarding ledger is write-only by
-         * design, so a replay would open on a board already full of records
-         * beneath a headline saying none were being kept.
+         * started together; and the boat is fitted to its water from a
+         * clock of its own, so a replay that restarted one and not the
+         * other would open with the hull easing down out of the sky.
          */
         cogAct.reset();
         pipelineAct.reset();
         architectureAct.reset();
-        onboardingAct.reset();
+        boatAct.reset();
+        cabinetAct.reset();
         projectsAct.reset();
-        dataGapAct.reset();
+        puzzleAct.reset();
         localAiAct.reset();
         ownedAct.reset();
       }
 
       /*
+       * A slide with a file beat runs for the beat AND its own duration, so
+       * the act still gets every second it was written for. `actTime` is the
+       * slide's own clock: negative while the folder is still opening, which
+       * is the cleanest way to say "this act has not started yet".
+       */
+      const entry = slide.entry;
+      const entryLen = entry ? entry.duration : 0;
+
+      /*
        * Held at the duration rather than wrapped, so the beat settles on its
        * final state and stays there while you keep talking.
        */
-      slideTime = Math.min(slideTime + delta, slide.duration);
+      slideTime = Math.min(slideTime + delta, slide.duration + entryLen);
 
-      sampleVec3(slide.camera, slideTime, camera.position);
-      sampleVec3(slide.target, slideTime, lookAt);
+      const inEntry = entry !== undefined && slideTime < entryLen;
+      const actTime = slideTime - entryLen;
+
+      if (seenEntering !== inEntry) {
+        seenEntering = inEntry;
+        setEntering(inEntry);
+      }
+
+      if (entry && inEntry) {
+        sampleVec3(entry.camera, slideTime, camera.position);
+        sampleVec3(entry.target, slideTime, lookAt);
+      } else {
+        sampleVec3(slide.camera, actTime, camera.position);
+        sampleVec3(slide.target, actTime, lookAt);
+      }
+
       camera.lookAt(lookAt);
 
-      sampleColor(slide.accent, slideTime, accent);
+      /*
+       * Frame the act on the right leaf when the slide is an opened folder.
+       *
+       * Recomputed against the live canvas size rather than set once, because
+       * `setViewOffset` stores the frame it was given: resize the window and
+       * a stale one skews the projection instead of framing with it. The
+       * compare is what keeps this from rebuilding the matrix every frame.
+       */
+      const wantsLeaf = Boolean(slide.notes) && !inEntry;
+      const frameWidth = Math.max(mount.clientWidth, 1);
+      const frameHeight = Math.max(mount.clientHeight, 1);
 
-      sampleColor(slide.background, slideTime, background);
+      if (
+        wantsLeaf !== leafApplied ||
+        frameWidth !== leafWidth ||
+        frameHeight !== leafHeight
+      ) {
+        leafApplied = wantsLeaf;
+        leafWidth = frameWidth;
+        leafHeight = frameHeight;
+
+        if (!wantsLeaf) {
+          camera.clearViewOffset();
+        } else {
+          /*
+           * The box the act has to land in, in fractions of the frame. Its
+           * left edge is asked of NotesPanel rather than written down here,
+           * so the act cannot creep back under the sheet when the window
+           * changes shape and the sheet changes width with it.
+           */
+          const boxLeft =
+            paperEdge(frameWidth, frameHeight) + ACT_GUTTER;
+
+          const boxWidth = Math.max(ACT_RIGHT - boxLeft, 0.2);
+
+          /*
+           * `setViewOffset` renders the sub-rect (offset, size) of a virtual
+           * frame of `full` size. Asking for a window LARGER than the full
+           * frame is the zoom-out — three.js scales the frustum by
+           * size/full, and nothing in it requires that ratio to be under 1.
+           */
+          const zoom = 1 / boxWidth;
+
+          /*
+           * Where the enlarged frustum has to start for the act to land on
+           * the box. Both of these are worth deriving rather than guessing:
+           * three.js applies the offset in units of the FULL frame and then
+           * scales the frustum, so the two interact, and an offset that
+           * looks like the right fraction of the screen is not one.
+           *
+           * Solving the three.js frustum for "the un-offset image occupies
+           * [boxLeft, boxRight]" gives an x offset of exactly -boxLeft, in
+           * enlarged-frame units. Vertically the box is the full height, so
+           * the act is centred in what is left over and then lifted to leave
+           * the caption its foot of the leaf.
+           */
+          const offsetX = -boxLeft * zoom * frameWidth;
+
+          const offsetY =
+            zoom * frameHeight * (ACT_LIFT - (1 - boxWidth) / 2);
+
+          camera.setViewOffset(
+            frameWidth,
+            frameHeight,
+            offsetX,
+            offsetY,
+            zoom * frameWidth,
+            zoom * frameHeight
+          );
+        }
+      }
+
+      sampleColor(slide.accent, Math.max(actTime, 0), accent);
+
+      /*
+       * Manila is the inside of the folder, not the room it is opened in.
+       * During the beat the cabinet is on stage, so the ground is the
+       * cabinet's — see `background` on SlideEntry.
+       */
+      if (entry && inEntry) {
+        background.set(entry.background);
+      } else {
+        sampleColor(slide.background, actTime, background);
+      }
+
       (scene.background as THREE.Color).copy(background);
 
       /*
        * Narrowed on the act kind, so each act only ever sees its own
        * controls and adding one cannot silently inherit another's.
+       *
+       * The cabinet is the one exception: it is on stage for its own slides
+       * AND for every file beat, so it is the only act two different slides
+       * can put up.
        */
-      cogAct.root.visible = slide.act.kind === "cog";
-      pipelineAct.root.visible = slide.act.kind === "pipeline";
-      architectureAct.root.visible = slide.act.kind === "architecture";
-      onboardingAct.root.visible = slide.act.kind === "onboarding";
-      projectsAct.root.visible = slide.act.kind === "projects";
-      dataGapAct.root.visible = slide.act.kind === "data-gap";
-      localAiAct.root.visible = slide.act.kind === "local-ai";
-      ownedAct.root.visible = slide.act.kind === "owned";
+      cabinetAct.root.visible = inEntry || slide.act.kind === "cabinet";
+
+      cogAct.root.visible = !inEntry && slide.act.kind === "cog";
+      pipelineAct.root.visible = !inEntry && slide.act.kind === "pipeline";
+      architectureAct.root.visible =
+        !inEntry && slide.act.kind === "architecture";
+      boatAct.root.visible = !inEntry && slide.act.kind === "boat";
+      projectsAct.root.visible = !inEntry && slide.act.kind === "projects";
+      puzzleAct.root.visible = !inEntry && slide.act.kind === "puzzle";
+      localAiAct.root.visible = !inEntry && slide.act.kind === "local-ai";
+      ownedAct.root.visible = !inEntry && slide.act.kind === "owned";
 
       /*
        * Every branch is spelled out rather than letting the last act fall
        * through on an `else`. A trailing else silently adopts whatever act
        * is added next, which is a mis-render with no error attached to it.
        */
-      if (slide.act.kind === "cog") {
+      if (entry && inEntry) {
+        /*
+         * The beat is two moves sharing one clock: the file that was out
+         * goes back, and then the next one comes out. `handover` is the
+         * moment the first is seated. With no `from`, handover is 0 and the
+         * whole beat is the second move.
+         */
+        const returning = entry.from !== undefined && slideTime < entry.handover;
+
+        const open = returning
+          ? 1 - slideTime / Math.max(entry.handover, 1e-4)
+          : (slideTime - entry.handover) /
+            Math.max(entryLen - entry.handover, 1e-4);
+
+        cabinetAct.setAccent(accent);
+        cabinetAct.update(delta, {
+          lower: entry.drawer === 0 ? 1 : 0,
+          upper: entry.drawer === 1 ? 1 : 0,
+          drawer: entry.drawer,
+          file: returning ? (entry.from as number) : entry.file,
+          open,
+        });
+      } else if (slide.act.kind === "cog") {
         cogAct.setAccent(accent);
         cogAct.update(delta, {
-          driverTeeth: sampleScalar(slide.act.driverTeeth, slideTime),
+          driverTeeth: sampleScalar(slide.act.driverTeeth, actTime),
         });
       } else if (slide.act.kind === "pipeline") {
         pipelineAct.setAccent(accent);
         pipelineAct.update(delta, {
-          automated: sampleScalar(slide.act.automated, slideTime),
+          automated: sampleScalar(slide.act.automated, actTime),
         });
       } else if (slide.act.kind === "architecture") {
         architectureAct.setAccent(accent);
         architectureAct.update(delta, {
-          ordered: sampleScalar(slide.act.ordered, slideTime),
+          ordered: sampleScalar(slide.act.ordered, actTime),
         });
-      } else if (slide.act.kind === "data-gap") {
-        dataGapAct.setAccent(accent);
-        dataGapAct.update(delta, {
-          keyed: sampleScalar(slide.act.keyed, slideTime),
+      } else if (
+        slide.act.kind === "synopsis" ||
+        slide.act.kind === "market"
+      ) {
+        /*
+         * Flat slides. Nothing to pose — every act root is already hidden by
+         * the visibility lines above, because none of them match these kinds,
+         * so the canvas is left showing the slide's background and the DOM
+         * panel draws over it.
+         */
+      } else if (slide.act.kind === "cabinet") {
+        cabinetAct.setAccent(accent);
+        cabinetAct.update(delta, {
+          lower: sampleScalar(slide.act.lower, actTime),
+          upper: sampleScalar(slide.act.upper, actTime),
+
+          /* The cabinet's own slides sit still; nothing is being taken out. */
+          drawer: -1,
+          file: -1,
+          open: 0,
+        });
+      } else if (slide.act.kind === "puzzle") {
+        puzzleAct.setAccent(accent);
+        puzzleAct.update(delta, {
+          complete: sampleScalar(slide.act.complete, actTime),
         });
       } else if (slide.act.kind === "local-ai") {
         localAiAct.setAccent(accent);
         localAiAct.update(delta, {
-          inHouse: sampleScalar(slide.act.inHouse, slideTime),
+          inHouse: sampleScalar(slide.act.inHouse, actTime),
         });
       } else if (slide.act.kind === "owned") {
         ownedAct.setAccent(accent);
         ownedAct.update(delta, {
-          owned: sampleScalar(slide.act.owned, slideTime),
+          owned: sampleScalar(slide.act.owned, actTime),
         });
-      } else if (slide.act.kind === "onboarding") {
-        onboardingAct.setAccent(accent);
-        onboardingAct.update(delta, {
-          handsOff: sampleScalar(slide.act.handsOff, slideTime),
+      } else if (slide.act.kind === "boat") {
+        boatAct.setAccent(accent);
+        boatAct.update(delta, {
+          swell: sampleScalar(slide.act.swell, actTime),
         });
       } else {
         projectsAct.setAccent(accent);
         projectsAct.update(delta, {
-          shown: sampleScalar(slide.act.shown, slideTime),
+          shown: sampleScalar(slide.act.shown, actTime),
         });
       }
 
@@ -281,7 +494,9 @@ export default function Page() {
        * of frames where the words actually change.
        */
       const nextCopy =
-        slide.copy.length > 0 ? sampleIndex(slide.copy, slideTime) : 0;
+        slide.copy.length > 0
+          ? sampleIndex(slide.copy, Math.max(actTime, 0))
+          : 0;
 
       if (nextCopy !== seenCopy) {
         seenCopy = nextCopy;
@@ -299,12 +514,13 @@ export default function Page() {
       renderer.setAnimationLoop(null);
 
       scene.remove(
+        cabinetAct.root,
         cogAct.root,
         pipelineAct.root,
         architectureAct.root,
-        onboardingAct.root,
+        boatAct.root,
         projectsAct.root,
-        dataGapAct.root,
+        puzzleAct.root,
         localAiAct.root,
         ownedAct.root
       );
@@ -312,9 +528,10 @@ export default function Page() {
       cogAct.dispose();
       pipelineAct.dispose();
       architectureAct.dispose();
-      onboardingAct.dispose();
+      boatAct.dispose();
+      cabinetAct.dispose();
       projectsAct.dispose();
-      dataGapAct.dispose();
+      puzzleAct.dispose();
       localAiAct.dispose();
       ownedAct.dispose();
       stage.dispose();
@@ -332,7 +549,24 @@ export default function Page() {
    * The DOM follows the same timeline as the scene, but only at the copy
    * keyframes — the canvas owns everything that changes per frame.
    */
-  const atBottom = slide.layout === "bottom";
+  /*
+   * This slide is a folder lying open: manila ground, sheet on the left leaf,
+   * act on the right. It changes four things in the DOM — the copy moves off
+   * the paper, the copy drops to the foot of its leaf, the vignette comes
+   * off, and NotesPanel draws the folder.
+   */
+  const opened = Boolean(slide.notes) && !entering;
+
+  /*
+   * Always at the foot on an opened folder, whatever the slide asked for.
+   *
+   * `layout` was a choice between two ways of splitting the WHOLE frame, and
+   * an open folder has already spent that choice: half the frame is paper.
+   * Centred copy on the remaining half lands across the middle of the act,
+   * which is the one place it cannot go. At the foot it reads as a line
+   * written under a drawing, which is what it now is.
+   */
+  const atBottom = slide.layout === "bottom" || opened;
 
   /*
    * Clamped for the same reason the slide index is, and it is not
@@ -350,7 +584,7 @@ export default function Page() {
    * time off. The colour tracks still need sampling somewhere, and the top of
    * the timeline is the only defensible choice when nothing is being said.
    */
-  const hasCopy = !slide.bare && slide.copy.length > 0;
+  const hasCopy = !slide.bare && slide.copy.length > 0 && !entering;
 
   const copyAt = hasCopy ? slide.copy[safeCopyIndex].at : 0;
   const copy = hasCopy ? slide.copy[safeCopyIndex].value : null;
@@ -372,6 +606,12 @@ export default function Page() {
     new THREE.Color()
   ).getStyle();
 
+  /**
+   * Wheel and trackpad navigation, debounced.
+   *
+   * A trackpad flick emits a burst of events, so without the 450ms gate and the
+   * deltaY floor one gesture would skip several slides at once.
+   */
   const handleWheel = (event: React.WheelEvent<HTMLElement>) => {
     const now = performance.now();
 
@@ -405,7 +645,7 @@ export default function Page() {
         inset: 0,
         overflow: "hidden",
         background,
-        color: "white",
+        color: TEXT,
         cursor: "pointer",
         userSelect: "none",
         touchAction: "none",
@@ -476,7 +716,45 @@ export default function Page() {
        */}
       <BlueprintPanel visible={slide.act.kind === "owned"} />
 
-      {!slide.bare && (
+      {/*
+       * The open folder's left leaf. A slide carrying `notes` reads as a file
+       * that has been pulled out and opened; the act on the right is the
+       * other half of it.
+       */}
+      <NotesPanel
+        visible={opened}
+
+        /*
+         * The folder now shuts in three dimensions, in the beat that opens
+         * the next one. So when this panel is dismissed there is already a
+         * closing folder filling the canvas behind it, and the sheet has to
+         * be gone by the first frame of it rather than politely wiping away
+         * on top of it.
+         */
+        snap={Boolean(slide.entry)}
+        notes={slide.notes?.lines ?? []}
+        heading={slide.notes?.heading}
+        accent={accent}
+      />
+
+      {/*
+       * The two flat pages. Both read their content straight off the slide,
+       * so the deck stays the single place any wording is edited.
+       */}
+      <SynopsisPanel
+        visible={slide.act.kind === "synopsis"}
+        role={slide.act.kind === "synopsis" ? slide.act.role : ""}
+        points={slide.act.kind === "synopsis" ? slide.act.points : []}
+        accent={accent}
+      />
+
+      <MarketPanel
+        visible={slide.act.kind === "market"}
+        roles={slide.act.kind === "market" ? slide.act.roles : []}
+        accent={accent}
+      />
+
+      {!slide.bare && !opened && !entering && (
         <div
           aria-hidden="true"
           style={{
@@ -484,6 +762,13 @@ export default function Page() {
             inset: 0,
             pointerEvents: "none",
             /*
+             * Off during a file beat as well as on an opened folder. The
+             * beat ENDS on a frame that is nothing but manila, and cuts from
+             * there to a flat slide that has no vignette — so leaving it on
+             * would darken the corners of the last folder frame and light
+             * them again on the first flat one, which is the one cut in this
+             * deck that has to be invisible.
+             *
              * The corner falloff only. The left-hand wash that used to sit
              * on top of this was doing most of the damage: it darkened the
              * whole left half to hold copy legible against a lit machine,
@@ -517,10 +802,19 @@ export default function Page() {
           style={{
             position: "absolute",
             zIndex: 2,
-            left: "clamp(24px, 7vw, 112px)",
+            /*
+             * On an opened folder the left leaf belongs to the paper, so the
+             * headline crosses the fold onto the right one and narrows to fit
+             * the leaf it is now living on.
+             */
+            left: opened ? "54%" : "clamp(24px, 7vw, 112px)",
             top: atBottom ? "auto" : "50%",
             bottom: atBottom ? "clamp(56px, 11vh, 132px)" : "auto",
-            width: atBottom ? "min(900px, 74vw)" : "min(620px, 48vw)",
+            width: opened
+              ? "min(560px, 38vw)"
+              : atBottom
+                ? "min(900px, 74vw)"
+                : "min(620px, 48vw)",
             transform: atBottom ? "none" : "translateY(-50%)",
             pointerEvents: "none",
           }}
@@ -553,7 +847,15 @@ export default function Page() {
                 style={{
                   maxWidth: "48ch",
                   marginTop: "clamp(24px, 3.4vh, 42px)",
-                  color: "rgba(245,247,255,.68)",
+
+                  /*
+                   * Was a near-white, from when every slide sat on near-black.
+                   * The palette moved to a light ground and this did not, so
+                   * it was pale text on pale paper. Same ink as the title,
+                   * held back rather than recoloured.
+                   */
+                  color: TEXT,
+                  opacity: 0.72,
                   fontSize: "clamp(0.95rem, min(1.25vw, 2.1vh), 1.28rem)",
                   lineHeight: 1.65,
                 }}

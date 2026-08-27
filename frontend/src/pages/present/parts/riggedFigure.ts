@@ -191,6 +191,7 @@ const WORLD_Z = new THREE.Vector3(0, 0, 1);
  */
 const loaded = new Map<string, Promise<THREE.Group>>();
 
+/** Fetch and parse a glTF at most once per URL; later callers share the promise. */
 const loadOnce = (url: string): Promise<THREE.Group> => {
   let pending = loaded.get(url);
 
@@ -210,6 +211,16 @@ const loadOnce = (url: string): Promise<THREE.Group> => {
   return pending;
 };
 
+/**
+ * Loads a skinned character and returns a figure that walks on the deck's own
+ * rig. The GLB arrives asynchronously, so `root` is added to the scene
+ * immediately and populated later — `step` is a no-op until `ready` flips.
+ *
+ * Setup, in order, once the file lands: clone it with its own skeleton, scale
+ * it to `options.height`, resolve each bone slot by name, record every bone's
+ * rest rotation, then relax the arms down out of whatever bind pose the file
+ * shipped with.
+ */
 export function createRiggedFigure(
   url: string,
   options: RiggedOptions
@@ -242,6 +253,11 @@ export function createRiggedFigure(
    */
   const frameQuat = new THREE.Quaternion();
 
+  /**
+   * Resolve one bone slot by matching the model's node names against the
+   * pattern list. Ranked rather than first-hit, because a naive substring
+   * match on "hand" also catches every finger.
+   */
   const find = (skeletonRoot: THREE.Object3D, slot: Slot) => {
     const candidates: THREE.Object3D[] = [];
 
@@ -463,6 +479,11 @@ export function createRiggedFigure(
     }
   };
 
+  /**
+   * Apply one `LimbPose` across a whole chain — upper, lower and optional tip.
+   * Spread is accumulated on top of the upper swing rather than replacing it,
+   * which is how an arm can swing forward and lift outward at once.
+   */
   const poseLimb = (
     upperSlot: Slot,
     lowerSlot: Slot,
@@ -482,6 +503,14 @@ export function createRiggedFigure(
     }
   };
 
+  /**
+   * Pose the skeleton for one frame. Same contract as the procedural figure's
+   * `step`, and the same `computePose` call behind it — the difference is only
+   * that the numbers land on bones instead of on groups built here.
+   *
+   * Whole-body motion rides `holder` rather than the hips bone, so it composes
+   * cleanly with the per-bone work and cannot be undone by the next swing.
+   */
   const step = (input: FigureInput) => {
     if (!ready) {
       return;

@@ -64,6 +64,7 @@ export function createGearGeometry(
 
   const shape = new THREE.Shape();
 
+  /** Polar to cartesian. Every point on the tooth profile comes from here. */
   const pointAt = (radius: number, angle: number) =>
     new THREE.Vector2(Math.cos(angle) * radius, Math.sin(angle) * radius);
 

@@ -44,12 +44,14 @@ import { computePose, type FigureInput } from "./pose";
 
 export type { FigureInput };
 
+/** The assembled dummy. Add `root` to a scene, call `step` every frame. */
 export interface Figure {
   root: THREE.Group;
 
   /** Where the hands meet, in the figure's local space. Follow it with a prop. */
   grip: THREE.Object3D;
 
+  /** Pose the whole rig for one frame. See `pose.ts` for the inputs. */
   step: (input: FigureInput) => void;
   dispose: () => void;
 }
@@ -103,6 +105,15 @@ function segment(
   return { group, end };
 }
 
+/**
+ * Builds the dummy: pelvis, two legs, chest, two arms and a head, chained so
+ * every joint rotates about the pivot it actually represents.
+ *
+ * Construction is a hierarchy of `segment` calls — each returns the joint to
+ * rotate and a group at the far end to hang the next segment from. Nothing
+ * here is positioned in absolute terms, so changing a limb length at the top
+ * of the file moves everything downstream of it correctly.
+ */
 export function createFigure(): Figure {
   const root = new THREE.Group();
 
@@ -122,6 +133,7 @@ export function createFigure(): Figure {
 
   const geometries: THREE.BufferGeometry[] = [];
 
+  /** Track a geometry for disposal and hand it straight back. */
   const keep = <T extends THREE.BufferGeometry>(geometry: T): T => {
     geometries.push(geometry);
     return geometry;
@@ -177,6 +189,11 @@ export function createFigure(): Figure {
   const shinGeometry = limb(0.088, SHIN);
   const footGeometry = keep(new THREE.SphereGeometry(0.125, 18, 14));
 
+  /**
+   * Thigh, shin and foot for one side. `side` is -1 for left, +1 for right,
+   * and is used only to mirror the hip offset — the walk itself comes from
+   * `pose.ts`, which already phases the two legs apart.
+   */
   const buildLeg = (side: number) => {
     const thigh = segment(pelvis, new THREE.Mesh(thighGeometry, shell), THIGH);
 
@@ -278,6 +295,7 @@ export function createFigure(): Figure {
   shoulders.position.y = 0.3;
   chest.add(shoulders);
 
+  /** Upper arm, forearm and hand for one side. `side` mirrors as in `buildLeg`. */
   const buildArm = (side: number) => {
     const upper = segment(
       shoulders,
@@ -340,6 +358,15 @@ export function createFigure(): Figure {
 
   /* ------------------------------------------------------------------ step */
 
+  /**
+   * Apply one frame of the walk. Asks `pose.ts` for the numbers, writes them
+   * onto the joints, then does the two things a pure pose function cannot:
+   * plants the lowest foot on the ground, and holds the supporting foot still
+   * underneath the body so the figure does not skate.
+   *
+   * Both corrections need the PREVIOUS frame, which is why this is the only
+   * part of the rig that keeps state.
+   */
   const step = (input: FigureInput) => {
     const pose = computePose(input);
 

@@ -26,6 +26,8 @@ import * as THREE from "three";
 
 import type { Act } from "./act";
 
+import { SAGE_HEX } from "../palette";
+
 import { clamp01, smootherstep } from "../parts/easing";
 
 import { createLabel, type Label } from "../parts/label";
@@ -67,6 +69,13 @@ export interface ProjectsState {
  */
 export type ProjectsAct = Act<ProjectsState>;
 
+/**
+ * Builds the six mechanisms and their captions, laid out on one grid.
+ *
+ * Each project is its own little machine rather than an icon — rising bars, a
+ * stacking importer, an advancing queue, a ring of months, a clock face and a
+ * snapping scatter — so the SHAPE of each one carries what it does.
+ */
 export function createProjectsAct(): ProjectsAct {
   const root = new THREE.Group();
 
@@ -79,18 +88,20 @@ export function createProjectsAct(): ProjectsAct {
   root.position.set(0, 2.5, 0);
   root.rotation.y = 0;
 
-  const accent = new THREE.Color(0x8ea2ff);
+  const accent = new THREE.Color(SAGE_HEX);
 
   /* Everything disposable, collected as it is built. */
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
   const labels: Label[] = [];
 
+  /** Track a geometry for disposal and hand it straight back. */
   const keepGeometry = <T extends THREE.BufferGeometry>(geometry: T): T => {
     geometries.push(geometry);
     return geometry;
   };
 
+  /** Track a material for disposal and hand it straight back. */
   const keepMaterial = <T extends THREE.Material>(material: T): T => {
     materials.push(material);
     return material;
@@ -162,7 +173,7 @@ export function createProjectsAct(): ProjectsAct {
     const caption = createLabel(CAPTIONS[i], {
       width: 2.5,
       tracking: 0.26,
-      color: "#ccd4e6",
+      color: "#242424",
     });
 
     caption.mesh.position.set(0, CAPTION_Y, 0);
@@ -372,6 +383,11 @@ export function createProjectsAct(): ProjectsAct {
   /* Scratch, so the loop allocates nothing. */
   const scratch = new THREE.Vector3();
 
+  /**
+   * One frame. `shown` places the six in sequence rather than together — each
+   * gets its own slice of the ramp, so the grid populates as a list being read
+   * out rather than as one bulk reveal. Once placed, each runs its own loop.
+   */
   const update = (delta: number, state: ProjectsState) => {
     elapsed += delta;
 
@@ -410,6 +426,7 @@ export function createProjectsAct(): ProjectsAct {
 
     /* 2. notes — drawn in one at a time and squared up. */
     for (let i = 0; i < sheets.length; i += 1) {
+      /* Staggered per sheet, so they are drawn in one at a time. */
       const cycle = (elapsed * 0.5 + i * 0.16) % 1;
       const landed = smootherstep(clamp01(cycle * 2.2));
 

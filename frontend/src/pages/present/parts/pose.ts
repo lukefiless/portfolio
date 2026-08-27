@@ -46,6 +46,23 @@ export interface FigureInput {
   time: number;
 
   /**
+   * 0 = hands wherever the rest of the pose put them, 1 = hands working over
+   * a keyboard in front of the figure. Blend it.
+   *
+   * Distinct from `reach`, and the difference is the whole point. Reaching
+   * swings the arms out and back through their full range, which is what a
+   * person does to PICK SOMETHING UP; typing holds them at a settled desk
+   * posture and moves the hands a little within it. Cycling `reach` to fake
+   * typing is what this replaces — it read as six people repeatedly grabbing
+   * at their monitors.
+   *
+   * The two hands are driven from `time` at different rates and offsets, so
+   * they never land together. Hands moving in unison is the tell that turns
+   * an idle into an animation played twice.
+   */
+  typing?: number;
+
+  /**
    * 0 = standing, 1 = sat down. Blend it.
    *
    * Optional because most callers never sit. When it is set the thighs swing
@@ -71,12 +88,14 @@ export interface LimbPose {
   spread: number;
 }
 
+/** Everything one frame of the walk needs, in the rig's own terms. */
 export interface Pose {
   legL: LimbPose;
   legR: LimbPose;
   armL: LimbPose;
   armR: LimbPose;
 
+  /** The whole body, moved as one. Sway, bob, lean and squash. */
   body: {
     offsetX: number;
     offsetY: number;
@@ -86,25 +105,47 @@ export interface Pose {
     stretchXZ: number;
   };
 
+  /** Hips. `rotY` is the twist that opposes the chest. */
   pelvis: { rotY: number; rotZ: number };
+
+  /** Ribcage. Counter-rotates against the pelvis; `breathe` is idle scale. */
   chest: { rotY: number; rotZ: number; breathe: number };
+
+  /** Skull. Lags the chest, so it reads as carried rather than bolted on. */
   head: { rotX: number; rotY: number; rotZ: number };
+
+  /**
+   * Where a carried object should sit, relative to the body. Anything the
+   * figure is holding parents here rather than to a hand, so it stays put
+   * through a stride instead of jittering with the arm swing.
+   */
   grip: { y: number; z: number };
 }
 
 const clamp01 = (x: number) => THREE.MathUtils.clamp(x, 0, 1);
 
+/**
+ * One frame of the walk, as numbers. Pure — same input, same output, no
+ * meshes touched and no state kept between calls.
+ *
+ * The caller owns `phase` and keeps advancing it; everything else is a blend
+ * amount it can move freely. Both figures in the deck call this and then
+ * apply the result to whatever they happen to be made of, which is the only
+ * reason the procedural dummy and the imported skeleton walk identically.
+ */
 export function computePose({
   phase,
   gait,
   load,
   reach,
   time,
+  typing = 0,
   seated = 0,
 }: FigureInput): Pose {
   const walk = clamp01(gait);
   const held = clamp01(load);
   const stretchOut = clamp01(reach);
+  const keys = clamp01(typing);
   const sat = clamp01(seated);
 
   const swing = Math.sin(phase);
@@ -187,6 +228,42 @@ export function computePose({
 
     spreadL = THREE.MathUtils.lerp(spreadL, 0.12, stretchOut);
     spreadR = THREE.MathUtils.lerp(spreadR, -0.12, stretchOut);
+  }
+
+  /*
+   * Typing. Layered last, so it wins over a reach the way it should — a
+   * figure told to do both is at a desk, not halfway to a shelf.
+   *
+   * The posture is upper arms hanging close to the body and elbows folded to
+   * roughly a right angle, which is what puts the hands out over a worktop
+   * instead of straight out in front of the chest. The two are separate
+   * angles rather than one "reach" number precisely so the hands can sit
+   * ABOVE the desk rather than pointing at it.
+   */
+  if (keys > 0.001) {
+    /*
+     * Two incommensurable rates, so the hands drift in and out of step
+     * forever instead of resyncing on a short loop.
+     */
+    const tapL = Math.sin(time * 8.7);
+    const tapR = Math.sin(time * 7.3 + 2.4);
+
+    /* Slower wander, so the hands travel the keyboard rather than drum one spot. */
+    const roamL = Math.sin(time * 1.9 + 0.6);
+    const roamR = Math.sin(time * 2.3 + 3.1);
+
+    const SHOULDER = -0.34;
+    const ELBOW = -1.16;
+
+    upperL = THREE.MathUtils.lerp(upperL, SHOULDER + tapL * 0.045, keys);
+    upperR = THREE.MathUtils.lerp(upperR, SHOULDER + tapR * 0.045, keys);
+
+    foreL = THREE.MathUtils.lerp(foreL, ELBOW + tapL * 0.075, keys);
+    foreR = THREE.MathUtils.lerp(foreR, ELBOW + tapR * 0.075, keys);
+
+    /* Lateral travel across the keys, which is the part that reads as typing. */
+    spreadL = THREE.MathUtils.lerp(spreadL, 0.2 + roamL * 0.075, keys);
+    spreadR = THREE.MathUtils.lerp(spreadR, -0.2 + roamR * 0.075, keys);
   }
 
   /* ------------------------------------------------------------------ body */
@@ -294,8 +371,8 @@ export function computePose({
     },
 
     grip: {
-      y: -0.16 + stretchOut * 0.14,
-      z: 0.6 + stretchOut * 0.42,
+      y: -0.16 + stretchOut * 0.14 + keys * 0.1,
+      z: 0.6 + stretchOut * 0.42 + keys * 0.16,
     },
   };
 }

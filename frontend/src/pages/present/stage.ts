@@ -58,6 +58,15 @@ export interface Stage {
   dispose: () => void;
 }
 
+/**
+ * Builds the whole studio and mounts its canvas inside `canvasHost`.
+ *
+ * Called exactly once, by `Present.tsx` on mount. Everything the deck's look
+ * depends on is decided in here — lens, tone mapping, the three lights, the
+ * environment map that gives metal something to reflect, and the bloom chain.
+ * Nothing about a slide reaches this function; the caller drives the camera
+ * from outside.
+ */
 export function createStage(
   canvasHost: HTMLElement,
   background: string

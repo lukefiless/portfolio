@@ -42,6 +42,8 @@
 import * as THREE from "three";
 
 import type { Act } from "./act";
+
+import { SAGE_HEX } from "../palette";
 import { clamp01, smootherstep } from "../parts/easing";
 import { createResourcePool } from "../parts/resources";
 import { STRUCTURE, emissive, retint, surface } from "../parts/materials";
@@ -72,6 +74,10 @@ export interface TemplateState {
  */
 export type TemplateAct = Act<TemplateState>;
 
+/**
+ * Build everything here, once. This runs at page load, not on slide entry —
+ * see the lifecycle note in `acts/act.ts` for why.
+ */
 export function createTemplateAct(): TemplateAct {
   const root = new THREE.Group();
 
@@ -84,7 +90,7 @@ export function createTemplateAct(): TemplateAct {
   root.position.set(0, 2.2, 0);
   root.rotation.y = -0.14;
 
-  const accent = new THREE.Color(0x8ea2ff);
+  const accent = new THREE.Color(SAGE_HEX);
 
   /*
    * Everything that touches the GPU goes through the pool, at the moment it

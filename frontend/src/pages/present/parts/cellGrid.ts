@@ -59,6 +59,14 @@ const GAP = 0.07;
 
 const STRIDE = CELL + GAP;
 
+/**
+ * Builds the sheet: one InstancedMesh of COLS x ROWS cells, each carrying its
+ * own freshness in a plain Float32Array alongside it.
+ *
+ * Freshness is stored on the CPU and only ever reaches the GPU as instance
+ * COLOUR. Nothing else about a cell changes — no scale, no opacity — so the
+ * whole decay story costs one colour buffer upload per frame.
+ */
 export function createCellGrid(): CellGrid {
   const root = new THREE.Group();
 
@@ -119,6 +127,13 @@ export function createCellGrid(): CellGrid {
 
   let spread = 1;
 
+  /**
+   * Rewrites every instance matrix for the current `spread`, and recentres
+   * the group so the sheet stays pinned to its top edge as rows unfold.
+   *
+   * Only called when `spread` actually moves, not every frame — the matrix
+   * buffer is the expensive one to re-upload.
+   */
   const layOut = () => {
     const eased = THREE.MathUtils.clamp(spread, 0, 1);
 
@@ -196,6 +211,7 @@ export function createCellGrid(): CellGrid {
 
   let cursor = 0;
 
+  /** Fisher-Yates over `order`, so `touchNext` walks the grid unpredictably. */
   const shuffle = () => {
     for (let i = count - 1; i > 0; i -= 1) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -225,6 +241,7 @@ export function createCellGrid(): CellGrid {
 
   const scratch = new THREE.Color();
 
+  /** Freshness 0..1 to a colour on the health ramp above, written into `out`. */
   const sampleRamp = (value: number, out: THREE.Color) => {
     const t = THREE.MathUtils.clamp(value, 0, 1);
 
@@ -241,6 +258,7 @@ export function createCellGrid(): CellGrid {
     return out.copy(from.color).lerp(to.color, (t - from.at) / span);
   };
 
+  /** Push one cell's current freshness to its instance colour. */
   const paint = (index: number) => {
     sampleRamp(freshness[index], scratch);
     cells.setColorAt(index, scratch);

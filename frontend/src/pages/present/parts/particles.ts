@@ -10,11 +10,24 @@
 import * as THREE from "three";
 
 export interface ParticlePool {
+  /** Add this to the scene once. */
   points: THREE.Points;
+
+  /** Write positions here, `[x, y, z]` per particle. Length `capacity * 3`. */
   positions: Float32Array;
+
+  /** Write colours here, `[r, g, b]` per particle, each 0..1. */
   colors: Float32Array;
+
+  /** How many particles the buffers hold. Fixed at construction. */
   capacity: number;
+
+  /**
+   * Flag both buffers for upload. Call ONCE per frame after all writes —
+   * the GPU never sees an edit to `positions` or `colors` without it.
+   */
   commit: () => void;
+
   dispose: () => void;
 }
 
@@ -52,6 +65,15 @@ function createDotTexture(): THREE.CanvasTexture {
   return texture;
 }
 
+/**
+ * Allocates a fixed pool of `capacity` dots at world `size`, and hands back
+ * the raw buffers to write into.
+ *
+ * The pool never grows and never recycles on its own — the CALLER owns which
+ * slots are live, and parks dead ones somewhere off camera. That is deliberate:
+ * every act has a different idea of what "finished" means for a particle, and
+ * a fixed buffer with an owner is simpler than a pool that tries to guess.
+ */
 export function createParticlePool(
   capacity: number,
   size: number

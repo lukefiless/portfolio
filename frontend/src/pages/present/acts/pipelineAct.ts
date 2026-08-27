@@ -21,6 +21,8 @@ import * as THREE from "three";
 
 import type { Act } from "./act";
 
+import { SAGE_HEX } from "../palette";
+
 import { clamp01, ease, smootherstep } from "../parts/easing";
 
 import { createCellGrid, type CellGrid } from "../parts/cellGrid";
@@ -130,6 +132,14 @@ export interface PipelineState {
  */
 export type PipelineAct = Act<PipelineState>;
 
+/**
+ * Builds both halves of the room at once: the source rack, the desk and
+ * monitor, the spreadsheet grid, the person who carries the export, and the
+ * automated plumbing that eventually replaces them.
+ *
+ * Everything exists from the start and is shown or hidden — `automated` never
+ * builds anything, it only decides which half of the room is running.
+ */
 export function createPipelineAct(): PipelineAct {
   const root = new THREE.Group();
 
@@ -141,7 +151,7 @@ export function createPipelineAct(): PipelineAct {
   root.position.set(0, 1.8, 0);
   root.rotation.y = -0.18;
 
-  const accent = new THREE.Color(0x79f7ff);
+  const accent = new THREE.Color(SAGE_HEX);
 
   /* ----------------------------------------------------------------- floor */
 
@@ -320,6 +330,12 @@ export function createPipelineAct(): PipelineAct {
 
   const gripWorld = new THREE.Vector3();
 
+  /**
+   * Put one record into the stream, taken from the fixed pool.
+   *
+   * Scans forward from `nextFree` rather than from zero so repeated spawns stay
+   * O(1) in the common case, and gives up silently when the pool is saturated.
+   */
   const spawn = () => {
     let index = -1;
 
@@ -344,6 +360,13 @@ export function createPipelineAct(): PipelineAct {
     alive[index] = 1;
   };
 
+  /**
+   * One frame. `automated` runs the whole act.
+   *
+   * The handover is deliberately placed on a trip boundary — see `HANDOVER` in
+   * `slides.ts`, which derives its timing from `TRIP` here so the person is
+   * standing still at the source when they hand over, not caught mid-stride.
+   */
   const update = (delta: number, target: PipelineState) => {
     elapsed += delta;
 
@@ -435,6 +458,7 @@ export function createPipelineAct(): PipelineAct {
       const inPhase = (from: number, to: number) =>
         tripTime >= from && tripTime < to;
 
+      /** Eased 0..1 progress through one segment of the walk cycle. */
       const across = (from: number, to: number) =>
         smootherstep((tripTime - from) / (to - from));
 

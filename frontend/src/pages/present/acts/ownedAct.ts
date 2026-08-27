@@ -25,12 +25,14 @@ import * as THREE from "three";
 
 import type { Act } from "./act";
 
+import { SAGE_HEX } from "../palette";
+
 import { clamp01, smootherstep } from "../parts/easing";
 
 import { createFigure, type Figure } from "../parts/figure";
 import { createRiggedFigure, type RiggedFigure } from "../parts/riggedFigure";
 
-/** The same character as the data, onboarding and local-AI acts. */
+/** The same character as the data and local-AI acts. */
 const CHARACTER_MODEL: string | null = "/models/character.glb";
 const CHARACTER_HEIGHT = 2.3;
 import { createLabel, type Label } from "../parts/label";
@@ -55,23 +57,32 @@ export interface OwnedState {
  */
 export type OwnedAct = Act<OwnedState>;
 
+/**
+ * Builds the RIGHT half of the "we hold the drawing" slide — the built thing,
+ * standing and working. The left half is `BlueprintPanel`, drawn in the DOM.
+ *
+ * `root` is offset to the right of centre so the SVG sheet has the left of
+ * frame to itself; the two halves never overlap and never know about each other.
+ */
 export function createOwnedAct(): OwnedAct {
   const root = new THREE.Group();
 
   root.position.set(0, 1.8, 0);
   root.rotation.y = -0.08;
 
-  const accent = new THREE.Color(0xb08cff);
+  const accent = new THREE.Color(SAGE_HEX);
 
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
   const labels: Label[] = [];
 
+  /** Track a geometry for disposal and hand it straight back. */
   const keepGeometry = <T extends THREE.BufferGeometry>(g: T): T => {
     geometries.push(g);
     return g;
   };
 
+  /** Track a material for disposal and hand it straight back. */
   const keepMaterial = <T extends THREE.Material>(m: T): T => {
     materials.push(m);
     return m;
@@ -173,6 +184,10 @@ export function createOwnedAct(): OwnedAct {
 
   let elapsed = 0;
 
+  /**
+   * One frame. `owned` takes the thing from sealed and metered to open and ours,
+   * and drives how brightly the motes flowing through it read.
+   */
   const update = (delta: number, state: OwnedState) => {
     elapsed += delta;
 
@@ -232,6 +247,7 @@ export function createOwnedAct(): OwnedAct {
     accent.copy(color);
   };
 
+  /** Rescatters the motes so a replay does not open on a single synchronised pulse. */
   const reset = () => {
     elapsed = 0;
 

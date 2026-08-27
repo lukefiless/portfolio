@@ -7,8 +7,14 @@
  *
  * They are the same character the deck has used since the data slide, which
  * is the whole point of reusing it: the audience has already watched that
- * figure carry an export across a room once a day. Here there are six, none
- * of them tiring, and the work is going into a model in the same building.
+ * figure carry an export across a room once a day. Here there are six, and
+ * none of them tire.
+ *
+ * NOTHING IS DRAWN LEAVING THE ROOM, and that is the argument. An earlier
+ * pass ran a stream of particles from every desk up into a server overhead,
+ * which is the picture of work being SENT somewhere — the exact thing this
+ * slide exists to say is no longer happening. The room with no outflow in it
+ * makes the point better than an arrow to a box ever did.
  *
  * All six share one parsed model — see `loadOnce` in riggedFigure. Six
  * separate loads of a nine-megabyte character is most of a second of startup
@@ -27,15 +33,66 @@ import * as THREE from "three";
 
 import type { Act } from "./act";
 
-import { clamp01, smootherstep } from "../parts/easing";
+import { SAGE_HEX } from "../palette";
 
-import { createLabel, type Label } from "../parts/label";
-import { createParticlePool } from "../parts/particles";
+import { clamp01 } from "../parts/easing";
+
 import { createFigure, type Figure } from "../parts/figure";
 import { createRiggedFigure, type RiggedFigure } from "../parts/riggedFigure";
+import { createPropModel, type PropModel } from "../parts/propModel";
 
-/** The same character as the data and onboarding acts. */
+/** The same character as the data and "owned" acts. */
 const CHARACTER_MODEL: string | null = "/models/character.glb";
+
+/*
+ * Imported furniture. Null means "use the built-in boxes", which is what
+ * ships today — set either to a path under `public/` and that piece swaps
+ * over, with the box staying as the fallback if the file fails to load.
+ *
+ *   const DESK_MODEL: string | null = "/models/desk.glb";
+ *
+ * Both are scaled to the constants below rather than to whatever the file
+ * was authored at, so a desk from any source lands at the right height.
+ */
+const DESK_MODEL: string | null = "/models/desk.glb";
+const CHAIR_MODEL: string | null = "/models/chair.glb";
+
+/*
+ * Imported furniture is sized by WIDTH, not height — see the note on
+ * `PropModelOptions.width`. These match the boxes each piece replaces, so the
+ * room keeps the spacing it was composed with.
+ *
+ * TUNING: the loader logs what it measured, once per file, as
+ * `[prop] /models/desk.glb — measured ...`. Read the width off that line and
+ * change the numbers here; there is no need to touch the model.
+ */
+const DESK_WIDTH = 2.55;
+const CHAIR_WIDTH = 0.98;
+
+/*
+ * How far the chairs slide toward their desks.
+ *
+ * The workers do NOT ride this. They did at first, and it pushed all six into
+ * the worktop: an imported desk is over a unit deep, so its back edge already
+ * sits close to where a seated figure needs to be, and 0.3 was enough to bury
+ * them. The chair has room to move because it is behind the person, not
+ * because there is room in front of them.
+ */
+const CHAIR_TUCK = 0.3;
+
+/*
+ * The workers' own slide, kept separate for the reason above. The chair is
+ * deep enough that a figure sitting at 0 is still well within its footprint.
+ */
+const WORKER_TUCK = 0;
+
+/*
+ * Quarter turns, because both files were authored with their long axis along
+ * Z. The desk measures 2.42 x 3.98 x 5.36 in the file — deeper than it is
+ * wide, which is the giveaway that it needs turning before it is measured.
+ */
+const DESK_TURN = Math.PI / 2;
+const CHAIR_TURN = 0;
 const CHARACTER_HEIGHT = 1.95;
 
 const COLS = 3;
@@ -58,11 +115,6 @@ const DESK_H = 0.72;
 
 /** How far the seat lifts the figure off the floor. */
 const SEAT_RISE = 0.2;
-
-/** Where the work ends up. */
-const MODEL = new THREE.Vector3(0, 6.4, -3.4);
-
-const MOTES = 120;
 
 export interface LocalAiState {
   /** Master activity level. Pinned at 1 by the slide; nothing animates it. */
@@ -87,23 +139,31 @@ const seatOf = (i: number) => {
   };
 };
 
+/**
+ * Builds the room: six desks in two rows, a worker at each, and the rack they
+ * all feed. Every worker shares one parsed GLB via `loadOnce` in riggedFigure.
+ *
+ * There is no before-and-after here — the act has no second arrangement to
+ * blend to. `inHouse` only decides how strongly the room is running.
+ */
 export function createLocalAiAct(): LocalAiAct {
   const root = new THREE.Group();
 
   root.position.set(0, 0.5, 0);
   root.rotation.y = -0.1;
 
-  const accent = new THREE.Color(0x7dfcc0);
+  const accent = new THREE.Color(SAGE_HEX);
 
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
-  const labels: Label[] = [];
 
+  /** Track a geometry for disposal and hand it straight back. */
   const keepGeometry = <T extends THREE.BufferGeometry>(g: T): T => {
     geometries.push(g);
     return g;
   };
 
+  /** Track a material for disposal and hand it straight back. */
   const keepMaterial = <T extends THREE.Material>(m: T): T => {
     materials.push(m);
     return m;
@@ -138,10 +198,43 @@ export function createLocalAiAct(): LocalAiAct {
     new THREE.BoxGeometry(1.1, SEAT_RISE + 0.28, 1.0)
   );
 
-  const screenGeometry = keepGeometry(new THREE.BoxGeometry(0.95, 0.58, 0.06));
+  /* Imported furniture, when a path is set. Empty otherwise. */
+  const props: PropModel[] = [];
 
-  /** One lit screen per desk, so each worker visibly has something running. */
-  const screenMaterials: THREE.MeshBasicMaterial[] = [];
+  /**
+   * Place one imported prop, and hide the box it replaces once it lands.
+   *
+   * The box is left in the scene until then rather than being removed up
+   * front, so a slow file or a bad path degrades to the built-in furniture
+   * instead of to an empty floor with six people sitting on nothing.
+   */
+  const swapIn = (
+    url: string | null,
+    fallback: THREE.Mesh,
+    width: number,
+    turn: number,
+    x: number,
+    y: number,
+    z: number
+  ) => {
+    if (!url) {
+      return;
+    }
+
+    const prop = createPropModel(url, { width, turn });
+
+    prop.root.position.set(x, y, z);
+    root.add(prop.root);
+    props.push(prop);
+
+    prop.ready
+      .then(() => {
+        fallback.visible = false;
+      })
+      .catch(error =>
+        console.warn(`[local-ai] keeping the box for ${url}:`, error.message)
+      );
+  };
 
   for (let i = 0; i < WORKERS; i += 1) {
     const seat = seatOf(i);
@@ -152,56 +245,40 @@ export function createLocalAiAct(): LocalAiAct {
     desk.receiveShadow = true;
     root.add(desk);
 
+    /*
+     * Sized by WIDTH, to the box it replaces, and grounded on its own base so
+     * it is placed at the FLOOR of the seat rather than at the box's centre.
+     */
+    swapIn(
+      DESK_MODEL,
+      desk,
+      DESK_WIDTH,
+      DESK_TURN,
+      seat.x,
+      seat.y,
+      seat.z + 0.85
+    );
+
     /* Something to sit ON. A seated figure over bare floor reads as falling. */
     const chair = new THREE.Mesh(chairGeometry, deskMaterial);
-    chair.position.set(seat.x, seat.y + (SEAT_RISE + 0.28) / 2, seat.z - 0.4);
+    chair.position.set(
+      seat.x,
+      seat.y + (SEAT_RISE + 0.28) / 2,
+      seat.z - 0.4 + CHAIR_TUCK
+    );
     chair.castShadow = true;
     root.add(chair);
 
-    const screenMaterial = keepMaterial(new THREE.MeshBasicMaterial());
-
-    const screen = new THREE.Mesh(screenGeometry, screenMaterial);
-    /*
-     * Standing on the desk, not floating in front of it. At its first size
-     * and position each screen sat between its worker and the camera and hid
-     * the thing the slide is about.
-     */
-    screen.position.set(seat.x + 0.7, seat.y + DESK_H + 0.31, seat.z + 0.75);
-    screen.rotation.y = -0.35;
-    root.add(screen);
-
-    screenMaterials.push(screenMaterial);
+    swapIn(
+      CHAIR_MODEL,
+      chair,
+      CHAIR_WIDTH,
+      CHAIR_TURN,
+      seat.x,
+      seat.y,
+      seat.z - 0.4 + CHAIR_TUCK
+    );
   }
-
-  /* ----------------------------------------------------------- the model */
-
-  const modelGeometry = keepGeometry(new THREE.BoxGeometry(3.4, 1.6, 1.3));
-
-  const modelMaterial = keepMaterial(
-    new THREE.MeshStandardMaterial({
-      color: 0x323b4e,
-      metalness: 0.55,
-      roughness: 0.45,
-    })
-  );
-
-  const model = new THREE.Mesh(modelGeometry, modelMaterial);
-  model.position.copy(MODEL);
-  model.castShadow = true;
-  root.add(model);
-
-  const bandGeometry = keepGeometry(new THREE.BoxGeometry(2.6, 0.13, 0.06));
-
-  const bandMaterial = keepMaterial(new THREE.MeshBasicMaterial());
-
-  const band = new THREE.Mesh(bandGeometry, bandMaterial);
-  band.position.set(MODEL.x, MODEL.y - 0.46, MODEL.z + 0.67);
-  root.add(band);
-
-  const modelLabel = createLabel("LOCAL MODEL", { width: 2.6 });
-  modelLabel.mesh.position.set(MODEL.x, MODEL.y + 1.2, MODEL.z + 0.2);
-  root.add(modelLabel.mesh);
-  labels.push(modelLabel);
 
   /* --------------------------------------------------------------- workers */
 
@@ -216,7 +293,11 @@ export function createLocalAiAct(): LocalAiAct {
 
     const fallback = createFigure();
     fallback.root.scale.setScalar(1.05);
-    fallback.root.position.set(seat.x, seat.y + SEAT_RISE, seat.z - 0.15);
+    fallback.root.position.set(
+      seat.x,
+      seat.y + SEAT_RISE,
+      seat.z - 0.15 + WORKER_TUCK
+    );
     fallback.root.rotation.y = facing;
     root.add(fallback.root);
     fallbacks.push(fallback);
@@ -229,7 +310,11 @@ export function createLocalAiAct(): LocalAiAct {
       : null;
 
     if (character) {
-      character.root.position.set(seat.x, seat.y + SEAT_RISE, seat.z - 0.15);
+      character.root.position.set(
+        seat.x,
+        seat.y + SEAT_RISE,
+        seat.z - 0.15 + WORKER_TUCK
+      );
       character.root.rotation.y = facing;
       root.add(character.root);
 
@@ -241,50 +326,42 @@ export function createLocalAiAct(): LocalAiAct {
     characters.push(character);
   }
 
-  /* ----------------------------------------------------------- the output */
-
-  const motes = createParticlePool(MOTES, 0.14);
-  root.add(motes.points);
-
-  const progress = new Float32Array(MOTES);
-  const speed = new Float32Array(MOTES);
-  const owner = new Uint8Array(MOTES);
-  const drift = new Float32Array(MOTES);
-
-  for (let i = 0; i < MOTES; i += 1) {
-    progress[i] = Math.random();
-    speed[i] = 0.35 + Math.random() * 0.28;
-    owner[i] = i % WORKERS;
-    drift[i] = (Math.random() - 0.5) * 0.8;
-  }
-
   /* ---------------------------------------------------------------- loop */
 
   let elapsed = 0;
 
-  const colour = new THREE.Color();
-
+  /**
+   * One frame. Advances every worker's typing cycle, with `inHouse` setting
+   * how alive the whole room reads.
+   */
   const update = (delta: number, state: LocalAiState) => {
     elapsed += delta;
 
     const running = clamp01(state.inHouse);
 
     for (let i = 0; i < WORKERS; i += 1) {
-      /*
-       * Each worker on its own cycle. Out of phase on purpose: six figures
-       * reaching in unison reads as one animation played six times, and the
-       * claim is that they are working independently.
-       */
-      const cycle = elapsed * 1.05 + i * 1.7;
-
-      const reach = smootherstep(Math.sin(cycle) * 0.5 + 0.5) * running;
-
       const drive = {
         phase: 0,
         gait: 0,
         load: 0,
-        reach: reach * 0.75,
+
+        /*
+         * No reach. Cycling it was the old way of suggesting work, and it
+         * swung every arm through its full range — six people repeatedly
+         * grabbing at their monitors rather than six people typing.
+         */
+        reach: 0,
+
+        /* Always on. Nothing in this slide asks them to stop. */
+        typing: running,
+
+        /*
+         * Offset per worker. The hand motion is driven from `time`, so six
+         * workers sharing a clock would type in perfect unison — which reads
+         * as one animation copied six times, not as six of them working.
+         */
         time: elapsed + i * 2.9,
+
         seated: 1,
       };
 
@@ -299,71 +376,32 @@ export function createLocalAiAct(): LocalAiAct {
         character.root.visible = imported;
         character.step(drive);
       }
-
-      /* The screen lights with the work rather than pulsing on its own. */
-      screenMaterials[i].color.copy(accent).multiplyScalar(0.22 + reach * 0.68);
     }
-
-    /* Output rising from each desk into the model, continuously. */
-    for (let m = 0; m < MOTES; m += 1) {
-      progress[m] += speed[m] * delta;
-
-      if (progress[m] >= 1) {
-        progress[m] -= 1;
-      }
-
-      const p = progress[m];
-      const seat = seatOf(owner[m]);
-
-      const arc = Math.sin(p * Math.PI);
-
-      motes.positions[m * 3] = THREE.MathUtils.lerp(seat.x, MODEL.x, p);
-
-      motes.positions[m * 3 + 1] =
-        THREE.MathUtils.lerp(seat.y + DESK_H + 1.3, MODEL.y - 0.6, p) +
-        arc * 0.6;
-
-      motes.positions[m * 3 + 2] =
-        THREE.MathUtils.lerp(seat.z + 0.9, MODEL.z, p) + drift[m] * arc;
-
-      const glow = (0.4 + 0.6 * arc) * running;
-
-      motes.colors[m * 3] = accent.r * glow;
-      motes.colors[m * 3 + 1] = accent.g * glow;
-      motes.colors[m * 3 + 2] = accent.b * glow;
-    }
-
-    motes.commit();
-
-    /* The model brightens as it takes work in. */
-    colour.copy(accent).multiplyScalar(0.55 + Math.sin(elapsed * 1.7) * 0.12);
-    bandMaterial.color.copy(colour);
   };
 
   const setAccent = (color: THREE.Color) => {
     accent.copy(color);
   };
 
+  /**
+   * Only the clock accumulates. The typing cycle is a pure function of it, so
+   * putting it back to zero is the whole of the reset.
+   */
   const reset = () => {
     elapsed = 0;
-
-    for (let i = 0; i < MOTES; i += 1) {
-      progress[i] = Math.random();
-    }
   };
 
   const dispose = () => {
+    props.forEach(p => p.dispose());
+
     geometries.forEach(g => g.dispose());
     materials.forEach(m => m.dispose());
-    labels.forEach(l => l.dispose());
 
     fallbacks.forEach(f => f.dispose());
     characters.forEach(c => c?.dispose());
-    motes.dispose();
 
     geometries.length = 0;
     materials.length = 0;
-    labels.length = 0;
   };
 
   return { root, update, setAccent, reset, dispose };

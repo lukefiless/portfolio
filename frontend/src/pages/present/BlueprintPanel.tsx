@@ -235,6 +235,7 @@ export default function BlueprintPanel({ visible }: Props) {
           <circle cx="380" cy="238" r="20" />
           <circle cx="380" cy="238" r="7" />
 
+          {/* Eight tick marks around the big gear, drawn as radial spokes. */}
           {[0, 45, 90, 135, 180, 225, 270, 315].map(a => {
             const r = (a * Math.PI) / 180;
 
@@ -249,6 +250,7 @@ export default function BlueprintPanel({ visible }: Props) {
             );
           })}
 
+          {/* Six ticks around the smaller gear. Fewer teeth reads as a faster wheel. */}
           {[0, 60, 120, 180, 240, 300].map(a => {
             const r = (a * Math.PI) / 180;
 
