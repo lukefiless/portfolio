@@ -46,6 +46,70 @@ const ACT_GUTTER = 0.025;
 const ACT_RIGHT = 0.99;
 
 /**
+ * How much of the right leaf a slide's DRAWING takes, when it carries one.
+ *
+ * Only `owned` does: a blueprint of the thing standing built beside it. That
+ * slide used to own the whole frame and put the drawing on the left, which
+ * stopped being available the moment the left leaf became the notes sheet —
+ * so the pair moves over and shares the leaf it has left.
+ *
+ * A share of the LEAF rather than of the frame, because the leaf is what is
+ * actually being divided and it changes width with the sheet.
+ */
+const DRAWING_SHARE = 0.36;
+
+/**
+ * The right leaf, and how it is divided.
+ *
+ * One function, called from two places that must agree: the render, which
+ * positions the drawing in the DOM, and the loop, which frames the act into
+ * what is left. Written once for the same reason `paperEdge` is — two
+ * copies of this arithmetic drift the first time the sheet changes size, and
+ * the failure is silent overlap rather than an error.
+ *
+ * Everything returned is a fraction of frame width.
+ */
+/**
+ * The fold, as a fraction of frame width.
+ *
+ * Written down here because two things have to agree about it and only one of
+ * them draws it: `NotesPanel` paints the seam at 50%, and everything on the
+ * right leaf has to start at or after it.
+ */
+const FOLD = 0.5;
+
+function leafSplit(width: number, height: number, drawing: boolean) {
+  /*
+   * THE LEAF BEGINS AT THE FOLD, NOT AT THE EDGE OF THE PAPER.
+   *
+   * `paperEdge` guards against the act creeping UNDER the sheet, and that is
+   * the only thing it is good for. It is not where the right leaf starts —
+   * on a large display the sheet stops growing at PAGE_HEIGHT_MAX while the
+   * leaf keeps widening, so the paper's edge falls further and further short
+   * of the middle. At 4K it lands at 37%, and anything anchored to it starts
+   * on the LEFT leaf: the drawing was spanning 39% to 61%, straddling the
+   * seam it is supposed to sit beside.
+   *
+   * So take whichever is further right. On a small window the sheet is the
+   * binding constraint and this is `paperEdge`; on a large one the fold is,
+   * and the leaf is simply the right half.
+   */
+  const leafLeft = Math.max(paperEdge(width, height) + ACT_GUTTER, FOLD);
+
+  if (!drawing) {
+    return { drawingLeft: 0, drawingWidth: 0, actLeft: leafLeft };
+  }
+
+  const drawingWidth = (ACT_RIGHT - leafLeft) * DRAWING_SHARE;
+
+  return {
+    drawingLeft: leafLeft,
+    drawingWidth,
+    actLeft: leafLeft + drawingWidth + ACT_GUTTER,
+  };
+}
+
+/**
  * How far the act rides above centre, as a fraction of frame height.
  *
  * The caption sits at the foot of the same leaf, so the act gives it room the
@@ -71,6 +135,13 @@ export default function Page() {
    * still showing a drawer — a flash of the answer over the question.
    */
   const [entering, setEntering] = useState(Boolean(firstSlide.entry));
+
+  /*
+   * Canvas size, for the panels that have to line up with the projection.
+   * Fed by the ResizeObserver already watching the mount; nothing reads it
+   * every frame, so state rather than a ref is the right shape.
+   */
+  const [frame, setFrame] = useState({ w: 0, h: 0 });
 
   /*
    * Bumping this restarts the active slide's timeline. The render loop
@@ -214,6 +285,7 @@ export default function Page() {
 
     /* Whether the act is framed to the right leaf, and at what canvas size. */
     let leafApplied = false;
+    let leafDrawing = false;
     let leafWidth = 0;
     let leafHeight = 0;
     let seenRestart = restartRef.current;
@@ -222,6 +294,14 @@ export default function Page() {
 
     const resize = () => {
       stage.resize(mount.clientWidth, mount.clientHeight);
+
+      /*
+       * The render needs the canvas size too — the drawing on the `owned`
+       * slide is a DOM panel positioned against the same leaf split the
+       * projection uses, and it cannot ask the loop for it. Pushed from the
+       * observer that was already here rather than a second one.
+       */
+      setFrame({ w: mount.clientWidth, h: mount.clientHeight });
     };
 
     resize();
@@ -301,15 +381,18 @@ export default function Page() {
        * compare is what keeps this from rebuilding the matrix every frame.
        */
       const wantsLeaf = Boolean(slide.notes) && !inEntry;
+      const wantsDrawing = slide.act.kind === "owned" && !inEntry;
       const frameWidth = Math.max(mount.clientWidth, 1);
       const frameHeight = Math.max(mount.clientHeight, 1);
 
       if (
         wantsLeaf !== leafApplied ||
+        wantsDrawing !== leafDrawing ||
         frameWidth !== leafWidth ||
         frameHeight !== leafHeight
       ) {
         leafApplied = wantsLeaf;
+        leafDrawing = wantsDrawing;
         leafWidth = frameWidth;
         leafHeight = frameHeight;
 
@@ -322,8 +405,11 @@ export default function Page() {
            * so the act cannot creep back under the sheet when the window
            * changes shape and the sheet changes width with it.
            */
-          const boxLeft =
-            paperEdge(frameWidth, frameHeight) + ACT_GUTTER;
+          const boxLeft = leafSplit(
+            frameWidth,
+            frameHeight,
+            wantsDrawing
+          ).actLeft;
 
           const boxWidth = Math.max(ACT_RIGHT - boxLeft, 0.2);
 
@@ -350,8 +436,7 @@ export default function Page() {
            */
           const offsetX = -boxLeft * zoom * frameWidth;
 
-          const offsetY =
-            zoom * frameHeight * (ACT_LIFT - (1 - boxWidth) / 2);
+          const offsetY = zoom * frameHeight * (ACT_LIFT - (1 - boxWidth) / 2);
 
           camera.setViewOffset(
             frameWidth,
@@ -411,7 +496,8 @@ export default function Page() {
          * moment the first is seated. With no `from`, handover is 0 and the
          * whole beat is the second move.
          */
-        const returning = entry.from !== undefined && slideTime < entry.handover;
+        const returning =
+          entry.from !== undefined && slideTime < entry.handover;
 
         const open = returning
           ? 1 - slideTime / Math.max(entry.handover, 1e-4)
@@ -441,10 +527,7 @@ export default function Page() {
         architectureAct.update(delta, {
           ordered: sampleScalar(slide.act.ordered, actTime),
         });
-      } else if (
-        slide.act.kind === "synopsis" ||
-        slide.act.kind === "market"
-      ) {
+      } else if (slide.act.kind === "synopsis" || slide.act.kind === "market") {
         /*
          * Flat slides. Nothing to pose — every act root is already hidden by
          * the visibility lines above, because none of them match these kinds,
@@ -713,8 +796,20 @@ export default function Page() {
       {/*
        * The drawing half of the "own the systems" slide. Flat, in the DOM,
        * over the canvas — see BlueprintPanel for why it is not geometry.
+       *
+       * `!entering` matters and did not used to: this slide now opens out of
+       * the cabinet like every other, and without the guard the drawing hangs
+       * in front of the folder for the whole of that beat. The 3D act has
+       * always been hidden during an entry; this had simply never been on a
+       * slide that had one.
+       *
+       * Its box comes from the same `leafSplit` the projection uses, so the
+       * drawing and the robot cannot land on top of each other.
        */}
-      <BlueprintPanel visible={slide.act.kind === "owned"} />
+      <BlueprintPanel
+        visible={slide.act.kind === "owned" && !entering && frame.w > 0}
+        box={leafSplit(Math.max(frame.w, 1), Math.max(frame.h, 1), true)}
+      />
 
       {/*
        * The open folder's left leaf. A slide carrying `notes` reads as a file
@@ -723,7 +818,6 @@ export default function Page() {
        */}
       <NotesPanel
         visible={opened}
-
         /*
          * The folder now shuts in three dimensions, in the beat that opens
          * the next one. So when this panel is dismissed there is already a

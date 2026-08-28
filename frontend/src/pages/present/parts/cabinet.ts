@@ -48,6 +48,19 @@ const TRAVEL = DEPTH * 0.78;
 const DRAWER_H = HEIGHT * 0.42;
 const DRAWER_GAP = HEIGHT * 0.04;
 
+/**
+ * Centre to centre between the two drawers.
+ *
+ * Exported because `slides.ts` needs it. The cabinet is only ever moved and
+ * turned about Y, so the upper drawer is the lower one raised by exactly this
+ * and nothing else — which means every camera pose written for a lower-drawer
+ * file works on an upper-drawer file with this added to its height, and the
+ * file beat plays identically in both. Hard-coding the number over there
+ * instead would put a second copy of this geometry in a file that cannot see
+ * when it changes.
+ */
+export const DRAWER_PITCH = DRAWER_H + DRAWER_GAP;
+
 /** File card size, and how far the tab stands above the card. */
 const FILE_W = WIDTH * 0.78;
 const FILE_H = DRAWER_H * 0.82;
@@ -78,10 +91,15 @@ export interface Cabinet {
    * place in it. Passing -1 presents nothing, which is the resting state.
    *
    * The whole beat is one number, and it runs in phases inside: the file
-   * lifts clear of the drawer, carries forward toward the camera growing as
-   * it comes, and the front cover swings open about the fold. Run it
-   * backwards and the file shuts and goes back where it came from, which is
-   * how the deck puts one file away and takes out the next.
+   * lifts clear of the drawer, the front cover swings open about the fold
+   * while it is still held at arm's length, and only then is the open folder
+   * pushed in toward the camera, growing as it comes. Run it backwards and
+   * the file shuts and goes back where it came from, which is how the deck
+   * puts one file away and takes out the next.
+   *
+   * Opening BEFORE the push rather than during it is what keeps the cover
+   * out of the lens; the note on STAGE_Y in the implementation has the
+   * numbers.
    *
    * At 1 the open folder's inside is bigger than the frame. That is the
    * point of the ending: the deck cuts from here to a flat slide whose
@@ -236,10 +254,7 @@ export function createCabinet(options: CabinetOptions): Cabinet {
     y: number,
     z: number
   ) => {
-    const mesh = new THREE.Mesh(
-      keepG(body(w, h, d, 0.035)),
-      shellMaterial
-    );
+    const mesh = new THREE.Mesh(keepG(body(w, h, d, 0.035)), shellMaterial);
 
     mesh.position.set(x, y, z);
     mesh.castShadow = true;
@@ -336,16 +351,25 @@ export function createCabinet(options: CabinetOptions): Cabinet {
   /*
    * The tab. Same manila as the card, and the same roughness — the emissive
    * is what marks the live file, not a different paper.
+   *
+   * ONE MATERIAL PER TAB, and it has to be. This was a single shared
+   * material with the live file's brightness written into it every frame,
+   * which does not say "this one" — it says "all of them", because every tab
+   * in both drawers was reading from it. Seven tabs lit and dimmed together
+   * and the cue meant nothing.
    */
-  const tabMaterial = keepM(
-    new THREE.MeshStandardMaterial({
-      color: FILE_COLOR,
-      roughness: 0.88,
-      metalness: 0.02,
-      emissive: new THREE.Color(GOLD_HEX),
-      emissiveIntensity: 0,
-    })
-  );
+  const tabMaterials: THREE.MeshStandardMaterial[] = [];
+
+  const makeTabMaterial = () =>
+    keepM(
+      new THREE.MeshStandardMaterial({
+        color: FILE_COLOR,
+        roughness: 0.88,
+        metalness: 0.02,
+        emissive: new THREE.Color(GOLD_HEX),
+        emissiveIntensity: 0,
+      })
+    );
 
   /** One file, and everything `setPresented` needs to pose it. */
   interface FileParts {
@@ -354,6 +378,22 @@ export function createCabinet(options: CabinetOptions): Cabinet {
 
     /** The fold. Turning this is what opens the folder. */
     hinge: THREE.Group;
+
+    /**
+     * The fold's own height, which RISES as the folder opens.
+     *
+     * Shut, the fold is the file's bottom edge. Opened, the cover has swung
+     * down past it and the folder is twice as tall, so the fold has to end up
+     * halfway up for the open folder to stay centred on where the shut one
+     * was. Moving the spine is how that happens.
+     */
+    spine: THREE.Group;
+
+    /** The turn from upright-in-a-drawer to lying open. */
+    roll: THREE.Group;
+
+    /** This file's own tab, so lighting one does not light all of them. */
+    tabMaterial: THREE.MeshStandardMaterial;
 
     /** Where it sits when it is just a file in a drawer. */
     restY: number;
@@ -377,7 +417,7 @@ export function createCabinet(options: CabinetOptions): Cabinet {
    * centred, and the hinge group sits at the fold.
    */
   const leafGeometry = keepG(card(FILE_W, FILE_H, 0.04, 0.075));
-  leafGeometry.translate(FILE_W / 2, 0, 0);
+  leafGeometry.translate(0, FILE_H / 2, 0);
 
   /** How far the two leaves sit apart when the folder is shut. */
   const LEAF_GAP = 0.055;
@@ -400,11 +440,7 @@ export function createCabinet(options: CabinetOptions): Cabinet {
      */
     const bay = new THREE.Mesh(
       keepG(
-        new THREE.BoxGeometry(
-          WIDTH - WALL * 2,
-          DRAWER_H,
-          DEPTH - WALL * 2
-        )
+        new THREE.BoxGeometry(WIDTH - WALL * 2, DRAWER_H, DEPTH - WALL * 2)
       ),
       voidMaterial
     );
@@ -530,9 +566,15 @@ export function createCabinet(options: CabinetOptions): Cabinet {
        * is all a file in a drawer needs to be. The separation is what stops
        * two coplanar faces fighting over the same pixels.
        */
+      /*
+       * The turn. Identity in the drawer, a quarter turn by the end.
+       */
+      const roll = new THREE.Group();
+      file.add(roll);
+
       const spine = new THREE.Group();
-      spine.position.x = -FILE_W / 2;
-      file.add(spine);
+      spine.position.y = -FILE_H / 2;
+      roll.add(spine);
 
       const back = new THREE.Mesh(leafGeometry, fileMaterial);
       back.position.z = -LEAF_GAP / 2;
@@ -548,6 +590,9 @@ export function createCabinet(options: CabinetOptions): Cabinet {
       front.castShadow = true;
       front.receiveShadow = true;
       hinge.add(front);
+
+      const tabMaterial = makeTabMaterial();
+      tabMaterials.push(tabMaterial);
 
       const tab = new THREE.Mesh(tabGeometry, tabMaterial);
 
@@ -568,12 +613,17 @@ export function createCabinet(options: CabinetOptions): Cabinet {
        * stands proud of the file so you can read it with the drawer shut;
        * one sitting mid-card is just a sticker.
        */
-      const tabY = FILE_H / 2 + TAB_H / 2 - 0.02;
+      /*
+       * Measured from the FOLD, and parented to it, because the fold moves.
+       * The tab belongs to the back leaf's top edge; hung off the file
+       * instead it would stay put while the leaf it is glued to rose.
+       */
+      const tabY = FILE_H + TAB_H / 2 - 0.02;
 
       tab.position.set(lane * FILE_W * 0.35, tabY, 0);
       tab.rotation.x = -0.3;
       tab.castShadow = true;
-      file.add(tab);
+      spine.add(tab);
 
       /*
        * The writing is the tab's own SURFACE, not a decal in front of it.
@@ -620,12 +670,17 @@ export function createCabinet(options: CabinetOptions): Cabinet {
       );
 
       label.mesh.rotation.x = -0.3;
-      file.add(label.mesh);
+
+      /* On the spine with the tab it is written on, for the same reason. */
+      spine.add(label.mesh);
       labels.push(label);
 
       files.push({
         group: file,
         hinge,
+        spine,
+        roll,
+        tabMaterial,
         restY: file.position.y,
         restZ: file.position.z,
       });
@@ -692,22 +747,64 @@ export function createCabinet(options: CabinetOptions): Cabinet {
   const OUT_Z = 3.4;
   const OUT_SCALE = 1.5;
 
+  /*
+   * WHERE IT OPENS, which is NOT where it ends up.
+   *
+   * The file is held here — clear of the drawer, still small, still most of
+   * the room away from the camera — for as long as the cover is turning, and
+   * only carried in once it is open.
+   *
+   * That staging pose is the whole reason this beat works, and it is worth
+   * being explicit about the geometry that forces it. The cover is a leaf
+   * FILE_H long swinging a half turn about the fold; at OUT_SCALE that is an
+   * arc nearly three units across. The camera finishes the beat 2.2 units
+   * from the folder. Those two numbers cannot both be true while the cover
+   * is turning: opening the file where it ends up sweeps the cover clean
+   * through the lens, and the near plane slices it on the way past.
+   *
+   * So the turn happens out here instead, where the arc has room, and the
+   * open folder is pushed in afterwards. Held at this distance the cover's
+   * nearest corner stays 2.24 units in front of the camera through the worst
+   * of the swing, against 3 units BEHIND it before.
+   *
+   * The margin got better when the fold moved to the bottom edge, because
+   * the cover then sweeps FILE_H rather than FILE_W — a little over half the
+   * arc. The staging is still what makes it safe, but it is no longer close.
+   *
+   * Opening toward the viewer is not a style choice either — see the note on
+   * the hinge below. Away is the direction that has no room.
+   */
+  const STAGE_Y = 0.45;
+  const STAGE_Z = 2.1;
+
   /**
-   * One number, three overlapping phases.
+   * One number, three overlapping phases: rise, open, push in.
    *
    * Overlapping rather than sequential: a file that finishes rising, then
-   * starts moving forward, then starts opening reads as three separate
+   * starts opening, then starts moving forward reads as three separate
    * mechanisms taking turns. Letting each begin before the last has finished
    * is what makes it one movement.
+   *
+   * The ORDER changed, though, and the order is load-bearing. It used to
+   * carry the file in and open it at the end, which is the natural way to
+   * write it and the one arrangement the camera cannot survive — see
+   * STAGE_Y. Opening happens in the middle now, at arm's length, and the
+   * push in is what finishes the beat.
+   *
+   * Both ends are untouched by the reshuffle: at 0 the file is exactly at
+   * rest in its drawer, and at 1 it is exactly at OUT_Y / OUT_Z / OUT_SCALE
+   * with the cover flat. That matters because the deck cuts on both frames —
+   * the entry camera in `slides.ts` is derived from the pose at 1, and
+   * running the beat backwards to put a file away lands on the pose at 0.
    */
   const setPresented = (drawer: number, index: number, amount: number) => {
     const a = clamp01(amount);
 
-    const lift = smootherstep(clamp01(a / 0.38));
-    const carry = smootherstep(clamp01((a - 0.22) / 0.5));
-    const swing = smootherstep(clamp01((a - 0.48) / 0.52));
+    const lift = smootherstep(clamp01(a / 0.28));
+    const swing = smootherstep(clamp01((a - 0.2) / 0.36));
+    const push = smootherstep(clamp01((a - 0.52) / 0.48));
 
-    const scale = THREE.MathUtils.lerp(1, OUT_SCALE, carry);
+    const scale = THREE.MathUtils.lerp(1, OUT_SCALE, push);
 
     drawers.forEach((parts, d) => {
       parts.files.forEach((file, i) => {
@@ -715,49 +812,106 @@ export function createCabinet(options: CabinetOptions): Cabinet {
           file.group.position.set(0, file.restY, file.restZ);
           file.group.rotation.set(0, 0, 0);
           file.group.scale.setScalar(1);
-          file.hinge.rotation.y = 0;
+          file.hinge.rotation.x = 0;
+          file.spine.position.y = -FILE_H / 2;
+          file.roll.rotation.z = 0;
+          file.tabMaterial.emissiveIntensity = 0;
 
           return;
         }
 
         /*
-         * The shift keeps the OPEN folder centred on where the shut one
-         * was. Opening doubles the width to the left of the fold, so
-         * without this the folder walks off frame exactly as it becomes
-         * the only thing in it — and the camera is already committed.
-         */
-        file.group.position.x = (FILE_W / 2) * scale * swing;
-
-        /*
-         * A hop on the way up, flattening out as the carry takes over, so
-         * the file is pulled rather than tracked along a rail.
+         * Two lerps, not one: out of the drawer to the staging pose, and
+         * only then in to where it ends up. The file is at STAGE_* for the
+         * whole of the swing, which is the point of splitting them.
+         *
+         * The hop rides on `lift * (1 - lift)`, so it rises and settles
+         * within the rise itself rather than being cancelled later by a
+         * phase that has not started yet. The file is pulled out by hand,
+         * not tracked along a rail.
          */
         file.group.position.y =
-          THREE.MathUtils.lerp(file.restY, OUT_Y, carry) +
-          FILE_H * 0.3 * lift * (1 - carry);
+          THREE.MathUtils.lerp(
+            THREE.MathUtils.lerp(file.restY, STAGE_Y, lift),
+            OUT_Y,
+            push
+          ) +
+          FILE_H * 0.9 * lift * (1 - lift) * (1 - push);
 
-        file.group.position.z = THREE.MathUtils.lerp(file.restZ, OUT_Z, carry);
+        file.group.position.z = THREE.MathUtils.lerp(
+          THREE.MathUtils.lerp(file.restZ, STAGE_Z, lift),
+          OUT_Z,
+          push
+        );
+
         file.group.scale.setScalar(scale);
 
         /*
-         * Tipped back while it travels and square again by the end. Square
-         * is not a style choice: the last frame has to be flat-on manila or
-         * the cut into the flat slide shows a folder at an angle becoming a
-         * page that is not.
+         * Tipped back as it comes up, and square again by the time the cover
+         * is over. Square is not a style choice: the last frame has to be
+         * flat-on manila or the cut into the flat slide shows a folder at an
+         * angle becoming a page that is not.
          */
-        file.group.rotation.x = -0.34 * carry * (1 - swing);
+        file.group.rotation.x = -0.3 * lift * (1 - swing) * (1 - push);
 
         /*
-         * NEGATIVE, so the cover sweeps toward the viewer on its way over
-         * rather than away behind the file. Same half-turn either way; only
-         * one of them looks like a folder being opened.
+         * IT OPENS UPWARD, ABOUT ITS BOTTOM EDGE.
+         *
+         * Which is how a file in a drawer is actually built: the fold is at
+         * the bottom, the two leaves stand up from it, and the tab is the top
+         * of the back one. It used to hinge about the LEFT edge — a folder
+         * lying on a desk, not standing in a drawer — and the cover swung out
+         * sideways across the frame.
+         *
+         * POSITIVE, so the cover comes toward the viewer on its way over and
+         * finishes below the fold. That is forced rather than preferred: the
+         * two leaves sit LEAF_GAP apart with the back one behind, so a cover
+         * turning the other way crosses the back leaf's plane within two
+         * degrees of leaving it and drags a seam across itself for the rest
+         * of the turn. Toward the viewer is the side with nothing in it.
+         *
+         * The arc is also half what it was — the cover now sweeps FILE_H
+         * rather than FILE_W — which is why it clears the camera by 2.24
+         * units here against 1.76 before.
          */
-        file.hinge.rotation.y = -Math.PI * swing;
+        file.hinge.rotation.x = Math.PI * swing;
+
+        /*
+         * The fold rides up as the cover comes over, so the folder stays
+         * centred on the spot the shut one occupied. Opening doubles the
+         * height BELOW the fold; without this the folder walks off the
+         * bottom of frame exactly as it becomes the only thing in it, and
+         * the camera is already committed.
+         */
+        file.spine.position.y = (-FILE_H / 2) * (1 - swing);
+
+        /*
+         * AND THEN IT TURNS TO BE READ.
+         *
+         * A quarter turn, taken while it flies in. The folder opens the way
+         * it is built — bottom fold, leaves above and below — and that leaves
+         * the fold lying HORIZONTALLY across the frame, which is the one
+         * thing the ending cannot have: the flat slide it cuts to is a folder
+         * with a sheet on the left leaf and the act on the right, so its fold
+         * is vertical and dead centre. The turn is what squares the two up.
+         *
+         * It rides on `push` rather than a phase of its own so the whole
+         * back half of the beat is one move — the folder comes at the camera
+         * turning, the way you would bring a file up to read it.
+         */
+        file.roll.rotation.z = (-Math.PI / 2) * push;
       });
     });
 
-    /* Only the live tab takes the accent, so the eye knows which one is next. */
-    tabMaterial.emissiveIntensity = index < 0 ? 0 : lift * 0.9;
+    /*
+     * Only the live tab takes the accent, so the eye knows which one is next.
+     * Every other tab was zeroed in the reset branch above.
+     */
+    const live = drawers[drawer]?.files[index];
+
+    if (live) {
+      live.tabMaterial.emissiveIntensity = lift * 0.9;
+    }
   };
 
   setDrawers(0, 0);
@@ -768,9 +922,20 @@ export function createCabinet(options: CabinetOptions): Cabinet {
     setDrawers,
     setPresented,
 
+    /**
+     * THE ACCENT MARKS A FILE, NOT THE FURNITURE.
+     *
+     * The handles used to take it too, which meant the cabinet's own metal
+     * changed colour the moment the deck turned from finished work to
+     * proposal — the drawer pulls went from sage to gold between one slide
+     * and the next, on a box that had not moved. An accent is the deck saying
+     * where it is in the argument; a filing cabinet is a filing cabinet.
+     *
+     * So the handles keep the sage they are made of, and the only thing this
+     * touches is the glow on the tabs.
+     */
     setAccent: color => {
-      handleMaterial.color.copy(color);
-      tabMaterial.emissive.copy(color);
+      tabMaterials.forEach(m => m.emissive.copy(color));
     },
 
     dispose: () => {

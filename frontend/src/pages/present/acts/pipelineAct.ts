@@ -33,8 +33,8 @@ import { createFigure, type Figure } from "../parts/figure";
 import { createRiggedFigure, type RiggedFigure } from "../parts/riggedFigure";
 import { createParticlePool, type ParticlePool } from "../parts/particles";
 
-const SOURCE_X = -6.4;
-const SHEET_X = 5.0;
+const SOURCE_X = -4.9;
+const SHEET_X = 3.7;
 const SHEET_Y = 2.9;
 
 /**
@@ -52,9 +52,20 @@ const SHEET_Y = 2.9;
  */
 const SHEET_Y_FLAT = 0.05;
 
-/** Where the walk starts and ends. */
-const WALK_FROM = -4.5;
-const WALK_TO = 3.5;
+/**
+ * Where the walk starts and ends.
+ *
+ * Five units, not eight. The trip is the argument — somebody carries this —
+ * and the argument is made by the fact of the walk, not by its length; at
+ * eight units the same point took three and a half seconds each way and the
+ * slide spent most of itself watching a person cross an empty stage.
+ *
+ * SOURCE_X and SHEET_X came in with these. The gaps either side are what the
+ * figure reaches across, so shortening the walk without moving the props
+ * would have left them reaching at things a stride and a half away.
+ */
+const WALK_FROM = -3.0;
+const WALK_TO = 2.2;
 
 /*
  * The trip as an explicit sequence of phases rather than a chain of
@@ -65,12 +76,12 @@ const WALK_TO = 3.5;
  * time and no gaps to fall through.
  */
 const PHASE = {
-  waiting: 0.9,
-  pulling: 2.3,
-  carrying: 5.8,
-  placing: 7.3,
-  returning: 10.4,
-  resting: 11.1,
+  waiting: 0.7,
+  pulling: 1.9,
+  carrying: 4.2,
+  placing: 5.5,
+  returning: 7.5,
+  resting: 8.1,
 } as const;
 
 /**
@@ -81,16 +92,21 @@ const PHASE = {
 export const TRIP = PHASE.resting;
 
 /** Where the export sits while still inside the system. */
-const IN_SYSTEM = new THREE.Vector3(-5.5, 1.25, 0.55);
+const IN_SYSTEM = new THREE.Vector3(-4.0, 1.25, 0.55);
 
 /** Where it comes to rest against the board. */
-const ON_BOARD = new THREE.Vector3(4.0, 1.45, 0.5);
+const ON_BOARD = new THREE.Vector3(2.7, 1.45, 0.5);
 
 /**
  * Tuned so one bulk import ages the whole ramp — green through yellow to
  * red — across a single trip, arriving at red just as the next load does.
+ *
+ * It is a rate, so it is tied to TRIP: this was 0.105 while a trip took 11.1
+ * seconds, and a trip now takes 8.1. Left alone the sheet would only have
+ * reached amber before the next load rescued it, and "the data goes stale
+ * between exports" is the entire point of the first half.
  */
-const DECAY_BY_HAND = 0.105;
+const DECAY_BY_HAND = 0.144;
 
 /**
  * Far slower, and outrun by the arrival rate below. Nothing here should ever
@@ -373,15 +389,38 @@ export function createPipelineAct(): PipelineAct {
     const automated = clamp01(target.automated);
     const byHand = automated < 0.5;
 
+    /*
+     * THE PERSON LEAVES. THEY DO NOT BLINK OUT.
+     *
+     * Everything else on this stage crosses over gradually — the server
+     * rises, the sheet spreads, the decay rate slides — but the figure was
+     * switched by a bare `automated < 0.5`, so on the frame the ramp crossed
+     * its midpoint a man vanished off a lit stage and a particle stream
+     * appeared where he had been standing. That is the moment the slide is
+     * about and it was the one moment nothing was animated.
+     *
+     * So the switch moved off the midpoint and onto the START of the ramp.
+     * The person is gone the instant the handover begins — which is a trip
+     * boundary, so they are standing still at the source with empty hands
+     * when it happens, never mid-stride and never mid-lift. Everything the
+     * machine does then happens in the space they left: the flow starts, the
+     * server rises, the sheet spreads.
+     *
+     * They do NOT walk off. That was tried and it was worse — a five-unit
+     * exit is its own small event, and it pulled the eye left exactly when
+     * the argument had moved right.
+     */
+    const leaving = automated > 0.002;
+
     const imported = character?.isReady() ?? false;
 
-    figure.root.visible = byHand && !imported;
-    crate.visible = byHand;
+    figure.root.visible = !leaving && !imported;
+    crate.visible = !leaving;
 
     if (character) {
-      character.root.visible = byHand && imported;
+      character.root.visible = !leaving && imported;
     }
-    pool.points.visible = !byHand;
+    pool.points.visible = leaving;
 
     /*
      * Held back until the person is gone. Revealing it on the first drop put
@@ -389,7 +428,7 @@ export function createPipelineAct(): PipelineAct {
      * to it, which is precisely the arrangement the slide is arguing against
      * — and it stole the one beat the handover has to itself.
      */
-    if (!byHand) {
+    if (leaving) {
       holding = ease(holding, 1, 2.4, delta);
     }
 
@@ -442,9 +481,9 @@ export function createPipelineAct(): PipelineAct {
      */
     grid.root.position.y = THREE.MathUtils.lerp(SHEET_Y_FLAT, SHEET_Y, spread);
 
-    grid.age(delta, byHand ? DECAY_BY_HAND : DECAY_AUTOMATED);
+    grid.age(delta, leaving ? DECAY_AUTOMATED : DECAY_BY_HAND);
 
-    if (byHand) {
+    if (!leaving) {
       /* ----------------------------------------------------- the trip */
 
       const previous = tripTime;

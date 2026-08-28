@@ -1,9 +1,22 @@
 /**
  * THE DRAWING
  *
- * A flat, cartoon drafting sheet laid over the canvas on the left of the "own
- * the systems" slide. What it specifies — a robot — is standing built and
- * working on the right, rendered in three dimensions by `ownedAct`.
+ * A flat, cartoon drafting sheet laid over the canvas on the "own the systems"
+ * slide. What it specifies — a robot — is standing built and working beside
+ * it, rendered in three dimensions by `ownedAct`.
+ *
+ * WHERE IT SITS, AND WHY IT IS NOT WRITTEN DOWN HERE
+ *
+ * It used to be pinned to the left of the frame, which was right while that
+ * slide owned the whole frame. It does not any more: the slide is a folder
+ * lying open, the left leaf is the notes sheet, and a drawing pinned there
+ * lands on top of the writing.
+ *
+ * So the drawing and the robot now share the RIGHT leaf, in the same order
+ * they always had — drawing first, the thing it specifies beside it. The box
+ * is handed in by `Present.tsx` rather than worked out here, because the act
+ * has to be framed into whatever this leaves and the two cannot be allowed to
+ * disagree. One `leafSplit` feeds both.
  *
  * Drawn flat and drawn in SVG on purpose. A blueprint is hairlines, grid
  * paper, dimension callouts and a title block; every one of those is native
@@ -41,9 +54,18 @@ const INK = "#FFFFFF";
 
 interface Props {
   visible: boolean;
+
+  /**
+   * Where the drawing goes, as fractions of frame width, from `leafSplit`.
+   * `actLeft` is not used here — it is the same object the projection reads.
+   */
+  box: {
+    drawingLeft: number;
+    drawingWidth: number;
+  };
 }
 
-export default function BlueprintPanel({ visible }: Props) {
+export default function BlueprintPanel({ visible, box }: Props) {
   /*
    * Ids have to be unique per instance or a second copy of this component
    * would capture the first one's pattern and clip references.
@@ -64,10 +86,22 @@ export default function BlueprintPanel({ visible }: Props) {
       style={{
         position: "absolute",
         zIndex: 2,
-        left: "clamp(20px, 4vw, 80px)",
+
+        /*
+         * Its share of the right leaf, not a clamp against the window. The
+         * leaf is what is being divided and it changes width with the sheet,
+         * so a fixed px width would creep back over the robot on one window
+         * shape and leave a gap on another.
+         */
+        left: `${box.drawingLeft * 100}%`,
+        width: `${box.drawingWidth * 100}%`,
+
+        /*
+         * Level with the act, which `ACT_LIFT` raises off centre by the same
+         * fraction so the caption keeps the foot of the leaf.
+         */
         top: "50%",
-        transform: "translateY(-56%)",
-        width: "min(520px, 42vw)",
+        transform: "translateY(-54.5%)",
         pointerEvents: "none",
       }}
     >

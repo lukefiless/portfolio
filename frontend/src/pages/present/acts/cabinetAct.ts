@@ -50,10 +50,10 @@ import { createCabinet, type Cabinet } from "../parts/cabinet";
  * `architecture` is not here because its slide is still hidden.
  */
 const DONE = [
-  { label: "the cog" },
-  { label: "how data arrives" },
-  { label: "the six" },
-  { label: "onboarding" },
+  { label: "MISSION" },
+  { label: "AUTOMATE" },
+  { label: "PROCESSES" },
+  { label: "ONBOARD" },
 ];
 
 /**
@@ -63,9 +63,9 @@ const DONE = [
  * deck's whole shape — here is what was built, and here is what is next.
  */
 const PROPOSED = [
-  { label: "the data gap" },
-  { label: "local AI" },
-  { label: "owning it" },
+  { label: "DATA GAP" },
+  { label: "MODERNIZE" },
+  { label: "HOST" },
 ];
 
 export interface CabinetState {

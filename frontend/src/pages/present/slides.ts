@@ -11,6 +11,7 @@
  */
 
 import { TRIP } from "./acts/pipelineAct";
+import { DRAWER_PITCH } from "./parts/cabinet";
 import { BACKGROUND, FOLDER, GOLD, SAGE } from "./palette";
 import type { Keyframe } from "./timeline";
 
@@ -23,7 +24,20 @@ import type { Keyframe } from "./timeline";
  * trip length that drifted out of step with a hand-written number would
  * misplace the one beat the whole slide turns on.
  */
-const HANDOVER = TRIP * 2;
+/*
+ * ONE trip, not two.
+ *
+ * Two was the deck watching the same errand happen twice before anything
+ * changed — with TRIP at 11.1 seconds that was 22 seconds of walking before
+ * the argument moved, on a slide whose point is made by the first crossing.
+ * One complete trip is a complete claim: somebody fetches this, by hand,
+ * and the sheet goes stale behind them.
+ *
+ * It stays a MULTIPLE of TRIP. The figure has to be standing still at the
+ * source when the handover starts, and a trip boundary is the only moment
+ * they are.
+ */
+const HANDOVER = TRIP;
 
 /** An `[x, y, z]` triple, in the scene's world units. */
 export type Vec3 = readonly [number, number, number];
@@ -372,6 +386,50 @@ const SWAP_TARGET: readonly Keyframe<Vec3>[] = [
   { at: SWAP, value: FILL_AIM },
 ];
 
+/* ---------------------------------------------------- the same, upstairs
+ *
+ * THE UPPER DRAWER GETS THE LOWER DRAWER'S CAMERA, RAISED.
+ *
+ * Not a second set of poses to keep in step with the first. The cabinet is
+ * only ever moved and turned about Y, so the upper drawer is the lower one
+ * lifted by `DRAWER_PITCH` and identical in every other respect — which means
+ * a pose that frames a file downstairs frames the matching file upstairs the
+ * moment you add that to its height, and the beat plays out the same.
+ *
+ * That is worth having as one line of arithmetic rather than four more
+ * hand-tuned vectors. The originals are derived from where a presented file
+ * ends up (see the note above); a hand-copied upper set would be four more
+ * numbers that stop being derived the first time anything downstairs moves.
+ */
+const raise = (v: Vec3): Vec3 => [v[0], v[1] + DRAWER_PITCH, v[2]];
+
+const UPPER_DRAWER_EYE = raise(DRAWER_EYE);
+const UPPER_DRAWER_AIM = raise(DRAWER_AIM);
+const UPPER_FILL_EYE = raise(FILL_EYE);
+const UPPER_FILL_AIM = raise(FILL_AIM);
+
+const UPPER_TAKE_OUT_CAMERA: readonly Keyframe<Vec3>[] = [
+  { at: 0, value: UPPER_DRAWER_EYE },
+  { at: TAKE_OUT, value: UPPER_FILL_EYE },
+];
+
+const UPPER_TAKE_OUT_TARGET: readonly Keyframe<Vec3>[] = [
+  { at: 0, value: UPPER_DRAWER_AIM },
+  { at: TAKE_OUT, value: UPPER_FILL_AIM },
+];
+
+const UPPER_SWAP_CAMERA: readonly Keyframe<Vec3>[] = [
+  { at: 0, value: UPPER_FILL_EYE },
+  { at: SWAP_HANDOVER, value: UPPER_DRAWER_EYE },
+  { at: SWAP, value: UPPER_FILL_EYE },
+];
+
+const UPPER_SWAP_TARGET: readonly Keyframe<Vec3>[] = [
+  { at: 0, value: UPPER_FILL_AIM },
+  { at: SWAP_HANDOVER, value: UPPER_DRAWER_AIM },
+  { at: SWAP, value: UPPER_FILL_AIM },
+];
+
 /*
  * ACT 0 — THE COG
  *
@@ -417,12 +475,12 @@ const deck: readonly Slide[] = [
      * move is made by two slides agreeing on a camera position.
      */
     camera: [
-      { at: 0, value: [7.4, 6.2, 12.8] },
-      { at: 12, value: [5.2, 5.4, 9.6] },
+      //{ at: 0, value: [7.4, 6.2, 12.8] },
+      { at: 0, value: [5.2, 5.4, 9.6] },
     ],
 
     target: [
-      { at: 0, value: [0, 1.6, 0] },
+      //{ at: 0, value: [0, 1.6, 0] },
       { at: 12, value: [0, 1.2, 0] },
     ],
 
@@ -463,16 +521,16 @@ const deck: readonly Slide[] = [
      */
     camera: [
       { at: 0, value: [5.2, 5.4, 9.6] },
-      { at: 5.2, value: [1.2, 5.8, 9.4] },
-      { at: 10.5, value: [-3.13, 3.33, 9.62] },
-      { at: 16, value: [-3.13, 3.33, 9.62] },
+      //{ at: 5.2, value: [1.2, 5.8, 9.4] },
+      //{ at: 10.5, value: [-3.13, 3.33, 9.62] },
+      { at: 10, value: [-3.13, 4.33, 9.62] },
     ],
 
     target: [
       { at: 0, value: [0, 1.2, 0] },
-      { at: 5.2, value: [-0.2, 0.4, 1.5] },
-      { at: 10.5, value: [-0.4, -0.15, 1.9] },
-      { at: 16, value: [-0.4, -0.15, 1.9] },
+      //{ at: 5.2, value: [-0.2, 0.4, 1.5] },
+      //{ at: 10.5, value: [-0.4, -0.15, 1.9] },
+      { at: 10, value: [-0.4, -0.15, 1.9] },
     ],
 
     accent: [{ at: 0, value: SAGE }],
@@ -521,11 +579,11 @@ const deck: readonly Slide[] = [
      * not typed up. An empty string leaves a blank ruled line.
      * ---------------------------------------------------------------- */
     notes: {
-      heading: "the cog",
+      heading: "MISSION",
       lines: [
-        "one shaft, one speed",
-        "the gear is the variable",
-        "same input, more of the machine",
+        "I don't want to be a small cog in a big machine",
+        "Having an impact",
+        "Do more than just one small thing",
       ],
     },
     duration: 15,
@@ -536,7 +594,7 @@ const deck: readonly Slide[] = [
      * the pipeline and the grid: hand the upper frame to the machine.
      */
     layout: "bottom",
-    copy: [{ at: 0, value: { title: "I want to have an impact" } }],
+    copy: [{ at: 0, value: { title: "" } }],
     /*
      * Centred on the driver, which sits on the world origin and never leaves
      * it — the gear that changes is the subject, so it holds the middle of
@@ -558,8 +616,8 @@ const deck: readonly Slide[] = [
      * because the act now plays on the right leaf only — see ACT_SHIFT in
      * `Present.tsx` — and the tighter poses were framed for the full frame.
      */
-    camera: [{ at: 0, value: [4.5, 5.7, 26.2] }],
-    target: [{ at: 0, value: [0, -1.5, 0] }],
+    camera: [{ at: 0, value: [5.5, 6.7, 15.2] }],
+    target: [{ at: 0, value: [3, -0.5, -4] }],
     accent: [{ at: 0, value: SAGE }],
     /*
      * Manila, not the deck's usual ground. This slide is a FOLDER LYING
@@ -619,20 +677,23 @@ const deck: readonly Slide[] = [
      * not typed up. An empty string leaves a blank ruled line.
      * ---------------------------------------------------------------- */
     notes: {
-      heading: "how data arrives",
+      heading: "sync-services",
       lines: [
-        "was: one export, carried by hand",
-        "now: records arrive on their own",
+        "WAS: one export done daily",
+        "  a bloated system constantly freezing",
+        "  regularly letting data expire",
+        "NOW: records arrive on their own",
+        "  a 5 minute loop keeping data modern",
       ],
     },
-    duration: HANDOVER + 12,
+    duration: HANDOVER + 10,
     layout: "bottom",
 
     copy: [
       {
         at: 0,
         value: {
-          title: "Data used to require manual exports, now it just arrives",
+          title: "",
         },
       },
     ],
@@ -651,7 +712,15 @@ const deck: readonly Slide[] = [
      * because the act now plays on the right leaf only — see ACT_SHIFT in
      * `Present.tsx` — and the tighter poses were framed for the full frame.
      */
-    camera: [{ at: 0, value: [1.6, 5.6, 16.2] }],
+    /*
+     * In, with the stage. `pipelineAct` pulled its rack and its sheet toward
+     * each other to shorten the walk, and a camera left where it was would
+     * have framed the same shot with a smaller scene in the middle of it.
+     * Moved along the line it was already looking down, far enough to hold
+     * the act at the size it was: the stage occupied 71% of the act's box
+     * before and 72% after.
+     */
+    camera: [{ at: 0, value: [1.34, 5.18, 12.95] }],
     target: [{ at: 0, value: [0.3, 3.5, 0] }],
 
     /*
@@ -674,14 +743,22 @@ const deck: readonly Slide[] = [
       kind: "pipeline",
 
       /*
-       * Crosses 0.5 exactly at HANDOVER: smootherstep is symmetric, so the
-       * midpoint of the ramp is the midpoint of its span.
+       * Opens ON the trip boundary, where the person is standing still at
+       * the source with empty hands. The act reads the LEADING edge of this
+       * ramp, not its midpoint — that is the frame they disappear on — and
+       * everything gradual about the handover happens across the rest of it:
+       * the flow starting, the server rising, the sheet spreading out of its
+       * single line.
+       *
+       * Two seconds, which is the machinery's business rather than the
+       * person's. It was widened to 3.6 while the figure walked off across
+       * it; nothing is paced against it now.
        */
       automated: [
         { at: 0, value: 0 },
-        { at: HANDOVER - 0.6, value: 0 },
-        { at: HANDOVER + 0.6, value: 1 },
-        { at: HANDOVER + 12, value: 1 },
+        { at: HANDOVER, value: 0 },
+        { at: HANDOVER + 2, value: 1 },
+        { at: HANDOVER + 10, value: 1 },
       ],
     },
   },
@@ -720,14 +797,14 @@ const deck: readonly Slide[] = [
      * not typed up. An empty string leaves a blank ruled line.
      * ---------------------------------------------------------------- */
     notes: {
-      heading: "the six",
+      heading: "Six Processes",
       lines: [
-        "exec dashboards",
-        "notes importer",
-        "call list",
-        "birthday importer",
-        "HR timecard",
-        "data cleanup",
+        "Executive dashboards",
+        "Notes-Importer",
+        "Daily Call List",
+        "Birthday-Importer",
+        "HR Timecard",
+        "Data Cleanup",
       ],
     },
     duration: 26,
@@ -748,8 +825,8 @@ const deck: readonly Slide[] = [
      * because a survey the audience is reading should not be moving under
      * them.
      */
-    camera: [{ at: 0, value: [0, 2.85, 20.4] }],
-    target: [{ at: 0, value: [0, 2.85, 0] }],
+    camera: [{ at: 0, value: [-1, 2.85, 20.4] }],
+    target: [{ at: 0, value: [-1, 2.85, 0] }],
     accent: [{ at: 0, value: SAGE }],
     /*
      * Manila, not the deck's usual ground. This slide is a FOLDER LYING
@@ -865,10 +942,10 @@ const deck: readonly Slide[] = [
      * not typed up. An empty string leaves a blank ruled line.
      * ---------------------------------------------------------------- */
     notes: {
-      heading: "onboarding",
+      heading: "Onboarding",
       lines: [
-        "the pile grew faster than the hands",
-        "now nobody touches them",
+        "New Clients / Prospects had to be tracked by hand",
+        "Now tracking is fully automated",
       ],
     },
     duration: 32,
@@ -877,8 +954,7 @@ const deck: readonly Slide[] = [
       {
         at: 0,
         value: {
-          title:
-            "Onboarding clients used to require manual sorting and labeling. Now it all funnels cleanly.",
+          title: "",
         },
       },
     ],
@@ -926,6 +1002,108 @@ const deck: readonly Slide[] = [
         { at: 0, value: 0.55 },
         { at: 14, value: 1 },
         { at: 32, value: 0.72 },
+      ],
+    },
+  },
+
+  /*
+   * THE TURN — ONE DRAWER SHUTS, THE OTHER OPENS
+   *
+   * The hinge of the whole deck, and the only slide whose subject is the
+   * FURNITURE rather than anything in it.
+   *
+   * Everything up to here came out of the lower drawer and was already built.
+   * Everything after comes out of the upper one and is being proposed. The
+   * deck could simply cut from the last finished file to the first proposed
+   * one, and the room would have no idea it had crossed anything. So the
+   * cabinet says it instead: the finished work slides shut, the proposal
+   * slides out, and the argument's two halves are two drawers of one object.
+   *
+   * THIS IS WHY `lower` AND `upper` ARE SEPARATE TRACKS. A single "which
+   * drawer is out" number cannot express a cross — one drawer has to be
+   * closing WHILE the other opens, or it reads as two events with a pause
+   * between them rather than as one thing turning over. See `CabinetState`.
+   *
+   * The overlap is deliberate and small: the lower is most of the way shut
+   * before the upper starts, so the eye follows one drawer and is handed to
+   * the other rather than being asked to watch both at once.
+   *
+   * IT ENDS ON THE UPPER DRAWER'S CONTENTS SHOT, which is the pose every
+   * upper file beat begins from — the same join the opening shot makes with
+   * `contents-done`, one floor up. Nothing here transitions to the next
+   * slide; the two simply agree on where the camera is.
+   */
+  {
+    id: "whats-to-come",
+    duration: 13,
+    layout: "bottom",
+
+    copy: [{ at: 0, value: { title: "What's to come." } }],
+
+    /*
+     * Rises with the drawers. The camera starts on the lower drawer it has
+     * been living in for four slides, and climbs to the upper one as the
+     * swap happens, so the move is the argument: this is the same cabinet,
+     * one drawer up.
+     */
+    camera: [
+      { at: 0, value: DRAWER_EYE },
+      { at: 1.4, value: DRAWER_EYE },
+      { at: 7.6, value: UPPER_DRAWER_EYE },
+      { at: 13, value: UPPER_DRAWER_EYE },
+    ],
+
+    target: [
+      { at: 0, value: DRAWER_AIM },
+      { at: 1.4, value: DRAWER_AIM },
+      { at: 7.6, value: UPPER_DRAWER_AIM },
+      { at: 13, value: UPPER_DRAWER_AIM },
+    ],
+
+    /*
+     * GOLD, and it starts here rather than on the next slide. Gold is the
+     * deck's mark for what is unresolved — see `palette.ts` — and the upper
+     * drawer is nothing but that. The colour turning over at the same moment
+     * the drawers do is the point.
+     */
+    accent: [{ at: 0, value: GOLD }],
+
+    /*
+     * The room, not manila. The frame is a cabinet being operated, not a
+     * folder lying open, and the manila belongs to the inside of a file.
+     */
+    background: [{ at: 0, value: BACKGROUND }],
+
+    act: {
+      kind: "cabinet",
+
+      /*
+       * Held shut for a beat first, for the same reason `contents-done`
+       * holds: an event that starts on frame zero is not read as an event.
+       */
+      lower: [
+        { at: 0, value: 1 },
+        { at: 1.4, value: 1 },
+        { at: 6.4, value: 0 },
+      ],
+
+      /*
+       * Starts while the lower is still visibly out, and the overlap is
+       * WIDE — five seconds against five, offset by less than a third.
+       *
+       * The first pass staggered these by more and the cross vanished: both
+       * curves are smootherstep, which leaves and arrives with zero velocity,
+       * so their tails are almost flat and a gap that looks generous in
+       * keyframe time buys almost no simultaneous MOTION. Measured, the two
+       * drawers were never both moving at once — it played as one drawer
+       * shutting, a pause, and another opening, which is the reading this
+       * slide exists to avoid. They now pass each other around a quarter
+       * open, both travelling.
+       */
+      upper: [
+        { at: 0, value: 0 },
+        { at: 2.8, value: 0 },
+        { at: 7.8, value: 1 },
       ],
     },
   },
@@ -982,6 +1160,34 @@ const deck: readonly Slide[] = [
    */
   {
     id: "data-gap",
+
+    /* File 0 of the upper drawer. Nothing to put away — the drawer has just
+     * been opened by the slide before, so this beat starts on its contents
+     * shot exactly as `cog` starts on the lower drawer's. */
+    entry: {
+      drawer: 1,
+      file: 0,
+      handover: 0,
+      duration: TAKE_OUT,
+      background: BACKGROUND,
+      camera: UPPER_TAKE_OUT_CAMERA,
+      target: UPPER_TAKE_OUT_TARGET,
+    },
+
+    /* ------------------------------------------------------------------
+     * EDIT THE NOTES HERE. This is the sheet clipped inside the open
+     * folder, on the left of this slide. One string per bullet — keep it
+     * to a handful of short ones; the paper is meant to look jotted on,
+     * not typed up. An empty string leaves a blank ruled line.
+     * ---------------------------------------------------------------- */
+    notes: {
+      heading: "Data Gaps",
+      lines: [
+        "Data in LPL and Wealthbox is misaligned",
+        "The gap requires manual cleanups that could be automated",
+      ],
+    },
+
     duration: 14,
     layout: "bottom",
 
@@ -989,31 +1195,24 @@ const deck: readonly Slide[] = [
       {
         at: 0,
         value: {
-          title: "A data gap between two difference sources",
+          title: "",
         },
       },
     ],
 
     /*
-     * Slightly off axis rather than square on. A board photographed dead
-     * flat reads as a diagram; a few degrees of angle gives the pieces an
-     * edge to catch the key light on, which is what makes the holes read as
-     * depth rather than as dark squares.
+     * HELD, and not a keyframe missing. This slide is a folder lying open on
+     * a desk, and a desk does not drift — see the long note on `onboarding`.
+     * The pose kept is the WIDEST of the three that were being eased between,
+     * because the act now plays on the right leaf only.
      */
-    camera: [
-      { at: 0, value: [2.4, 2.9, 18.6] },
-      { at: 11, value: [1.6, 2.5, 17.9] },
-      { at: 22, value: [2.2, 2.8, 18.4] },
-    ],
-
-    target: [
-      { at: 0, value: [0, 2.4, 0] },
-      { at: 22, value: [0, 2.2, 0] },
-    ],
+    camera: [{ at: 0, value: [2.4, 2.9, 18.6] }],
+    target: [{ at: 0, value: [0, 2.4, 0] }],
 
     accent: [{ at: 0, value: GOLD }],
 
-    background: [{ at: 0, value: BACKGROUND }],
+    /* Manila. The frame is the inside of the file just opened. */
+    background: [{ at: 0, value: FOLDER }],
 
     act: {
       kind: "puzzle",
@@ -1032,6 +1231,33 @@ const deck: readonly Slide[] = [
    */
   {
     id: "local-ai",
+
+    /* File 0 goes back, file 1 comes out. */
+    entry: {
+      drawer: 1,
+      from: 0,
+      file: 1,
+      handover: SWAP_HANDOVER,
+      duration: SWAP,
+      background: BACKGROUND,
+      camera: UPPER_SWAP_CAMERA,
+      target: UPPER_SWAP_TARGET,
+    },
+
+    /* ------------------------------------------------------------------
+     * EDIT THE NOTES HERE. This is the sheet clipped inside the open
+     * folder, on the left of this slide. One string per bullet — keep it
+     * to a handful of short ones; the paper is meant to look jotted on,
+     * not typed up. An empty string leaves a blank ruled line.
+     * ---------------------------------------------------------------- */
+    notes: {
+      heading: "Local AI",
+      lines: [
+        "Owning our own AI creates optimized workflows",
+        "It knows us, our data, and out goals",
+      ],
+    },
+
     duration: 16,
     layout: "bottom",
 
@@ -1051,20 +1277,19 @@ const deck: readonly Slide[] = [
      * it — the shot degenerates and spins. The Z offset below is what keeps
      * the angle at roughly 65 degrees instead of 90.
      */
-    camera: [
-      { at: 0, value: [4.6, 12.6, 9.2] },
-      { at: 11, value: [3.8, 13.3, 8.3] },
-      { at: 22, value: [4.4, 12.8, 9.0] },
-    ],
-
-    target: [
-      { at: 0, value: [0, 1.2, -1.6] },
-      { at: 22, value: [0, 1.0, -1.6] },
-    ],
+    /*
+     * HELD, and not a keyframe missing. This slide is a folder lying open on
+     * a desk, and a desk does not drift — see the long note on `onboarding`.
+     * The pose kept is the WIDEST of the three that were being eased between,
+     * because the act now plays on the right leaf only.
+     */
+    camera: [{ at: 0, value: [4.6, 12.6, 9.2] }],
+    target: [{ at: 0, value: [0, 1.2, -1.6] }],
 
     accent: [{ at: 0, value: SAGE }],
 
-    background: [{ at: 0, value: BACKGROUND }],
+    /* Manila. The frame is the inside of the file just opened. */
+    background: [{ at: 0, value: FOLDER }],
 
     act: {
       kind: "local-ai",
@@ -1081,6 +1306,30 @@ const deck: readonly Slide[] = [
    */
   {
     id: "owned",
+
+    /* File 1 goes back, file 2 comes out — the last of the proposal. */
+    entry: {
+      drawer: 1,
+      from: 1,
+      file: 2,
+      handover: SWAP_HANDOVER,
+      duration: SWAP,
+      background: BACKGROUND,
+      camera: UPPER_SWAP_CAMERA,
+      target: UPPER_SWAP_TARGET,
+    },
+
+    /* ------------------------------------------------------------------
+     * EDIT THE NOTES HERE. This is the sheet clipped inside the open
+     * folder, on the left of this slide. One string per bullet — keep it
+     * to a handful of short ones; the paper is meant to look jotted on,
+     * not typed up. An empty string leaves a blank ruled line.
+     * ---------------------------------------------------------------- */
+    notes: {
+      heading: "owning it",
+      lines: ["rented: the meter never stops", "owned: it is ours to change"],
+    },
+
     duration: 14,
     layout: "bottom",
 
@@ -1106,20 +1355,57 @@ const deck: readonly Slide[] = [
      * bars — and it has to hold its own beside a drawing that owns the left
      * of the screen.
      */
-    camera: [
-      { at: 0, value: [0, 4.2, 13.6] },
-      { at: 7, value: [-0.4, 4.0, 13.1] },
-      { at: 14, value: [0, 4.1, 13.5] },
-    ],
-
-    target: [
-      { at: 0, value: [0, 3.4, 0] },
-      { at: 14, value: [0, 3.2, 0] },
-    ],
+    /*
+     * HELD, and not a keyframe missing. This slide is a folder lying open on
+     * a desk, and a desk does not drift — see the long note on `onboarding`.
+     * The pose kept is the WIDEST of the three that were being eased between,
+     * because the act now plays on the right leaf only.
+     */
+    /*
+     * AIMED AT THE WORK, NOT AT THE MIDDLE OF AN EMPTY STAGE.
+     *
+     * `ownedAct` stands its figure at STAGE_X = 3.4 and flows the motes in
+     * from x = -1.6, because the act was composed for a full frame with the
+     * drawing owning the left of it. This camera used to sit at x = 0 and
+     * look at x = 0 — the empty middle — from nearly fourteen units out, and
+     * that was survivable while the shot had the whole screen.
+     *
+     * It is not survivable inside a column. The act is now framed into what
+     * the sheet and the drawing leave, and a shot that already wasted half
+     * its frame on empty stage then gets shrunk again: measured, the figure
+     * came out 85 pixels tall on a 1080p screen, against 306 before this
+     * slide became a folder. That is the "small and far away".
+     *
+     * So the target moves ONTO THE FIGURE — x = STAGE_X, not the midpoint of
+     * the stage — and the camera comes in to 5.6.
+     *
+     * Aiming at the midpoint was the first attempt and it was still wrong.
+     * It framed the motes' whole run, which meant the figure sat two thirds
+     * of the way to the right edge of its own shot; stacked on top of the
+     * column offset that put it at 90 to 95 percent of the screen, hard
+     * against the frame edge. Centring the shot on the figure brings it back
+     * to 83 to 87 percent and halves the distance to the drawing.
+     *
+     * What fills the space between them is the motes. They run from x = -1.6
+     * to x = 2.3, and this framing shows them from 0 onward — so they enter
+     * at the drawing's side of the act and flow into the figure. The gap is
+     * the flow. Cropping the first stretch of their run is the price, and it
+     * is the right one: they read as coming from off-frame, which is what a
+     * supply of work looks like.
+     *
+     * The distance is derived, not dialled. `stage.ts` holds the HORIZONTAL
+     * framing fixed and widens the vertical FOV on anything narrower than
+     * 16:9, so the binding constraint is vertical: the label under the floor
+     * to the top of the figure is 3.4 units, and 5.6 gives 3.86 — a quarter
+     * unit of air top and bottom on every aspect from 4:3 to 21:9.
+     */
+    camera: [{ at: 0, value: [3.4, 3.28, 5.59] }],
+    target: [{ at: 0, value: [3.4, 2.95, 0] }],
 
     accent: [{ at: 0, value: SAGE }],
 
-    background: [{ at: 0, value: BACKGROUND }],
+    /* Manila. The frame is the inside of the file just opened. */
+    background: [{ at: 0, value: FOLDER }],
 
     act: {
       kind: "owned",
@@ -1219,11 +1505,36 @@ const deck: readonly Slide[] = [
        * them.
        */
       roles: [
-        { company: "LPL Fiancial", title: "New Grad - Software Engineer", pay: "88,700 - 110,00", url: "https://career.lpl.com/search-results?from=10&s=1" },
-        { company: "First American Financial", title: "Full Stack Software Engineer", pay: "129,300 - 172,300", url: "" },
-        { company: "Northrop Grumman", title: "Engineer Software - DevOps & Cloud Infrastructure", pay: "75,100 - 137,600", url: "https://ngc.eightfold.ai/careers?utm_source=position_notification_logged_out_candidate&domain=ngc.com&profile_type=candidate&start=0&pid=1340070573127&sort_by=timestamp" },
-        { company: "Boeing", title: "Associate DevOps Developer", pay: "98,600 - 133,400", url: "https://jobs.boeing.com/job/seal-beach/associate-devops-developer/185/93457590464?utm_source=Indeed&utm_medium=organic&utm_campaign=Indeed" },
-        { company: "Booz Allen Hamilton", title: "DevSecOps Engineer", pay: "117,000 - 185,000", url: "https://careers.boozallen.com/careers/JobDetail?jobId=129016&source=JB-16500" },
+        {
+          company: "LPL Fiancial",
+          title: "New Grad - Software Engineer",
+          pay: "88,700 - 110,00",
+          url: "https://career.lpl.com/search-results?from=10&s=1",
+        },
+        {
+          company: "First American Financial",
+          title: "Full Stack Software Engineer",
+          pay: "129,300 - 172,300",
+          url: "",
+        },
+        {
+          company: "Northrop Grumman",
+          title: "Engineer Software - DevOps & Cloud Infrastructure",
+          pay: "75,100 - 137,600",
+          url: "https://ngc.eightfold.ai/careers?utm_source=position_notification_logged_out_candidate&domain=ngc.com&profile_type=candidate&start=0&pid=1340070573127&sort_by=timestamp",
+        },
+        {
+          company: "Boeing",
+          title: "Associate DevOps Developer",
+          pay: "98,600 - 133,400",
+          url: "https://jobs.boeing.com/job/seal-beach/associate-devops-developer/185/93457590464?utm_source=Indeed&utm_medium=organic&utm_campaign=Indeed",
+        },
+        {
+          company: "Booz Allen Hamilton",
+          title: "DevSecOps Engineer",
+          pay: "117,000 - 185,000",
+          url: "https://careers.boozallen.com/careers/JobDetail?jobId=129016&source=JB-16500",
+        },
         { company: "", title: "", pay: "", url: "" },
       ],
     },

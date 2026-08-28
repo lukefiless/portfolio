@@ -97,8 +97,25 @@ export function createCellGrid(): CellGrid {
 
   const headerGeometry = new THREE.BoxGeometry(width, 0.44, 0.06);
 
-  const headerMaterial = new THREE.MeshBasicMaterial({
-    color: 0x1c6b48,
+  /*
+   * CHROME, NOT DATA — so it is no longer green.
+   *
+   * This was a saturated green bar, unlit, across the top of the sheet. Two
+   * things were wrong with it. It put a second green in the frame that meant
+   * nothing: on this sheet green is FRESHNESS, the top of a ramp that runs
+   * red to green, and a title bar wearing the same colour makes the one
+   * signal on stage compete with a decoration. And being unlit it took no
+   * light at all, so it sat in front of a lit server rack as a flat rectangle
+   * of colour — which is what made the sheet read as an overlay pasted onto
+   * the machine rather than a panel mounted on it.
+   *
+   * Now it is a lit strip a shade up from the backing: still legible as a
+   * header, made of the same dark the rest of the chassis is made of.
+   */
+  const headerMaterial = new THREE.MeshStandardMaterial({
+    color: 0x28313f,
+    metalness: 0.2,
+    roughness: 0.7,
   });
 
   const header = new THREE.Mesh(headerGeometry, headerMaterial);
@@ -109,8 +126,24 @@ export function createCellGrid(): CellGrid {
 
   const cellGeometry = new THREE.PlaneGeometry(CELL, CELL);
 
-  /* Unlit, so instance colour is the entire appearance. */
-  const cellMaterial = new THREE.MeshBasicMaterial();
+  /*
+   * LIT, and instance colour is still the entire story.
+   *
+   * These were unlit, which made every cell hold its full ramp colour no
+   * matter where the light was — and a hundred and eight of them at the top
+   * of the ramp is one solid block of green hanging in front of a shaded
+   * rack. Flat colour in a lit scene reads as a decal; it is the same trap
+   * the cabinet's tab labels fell into.
+   *
+   * A standard material multiplies instance colour into its diffuse, so the
+   * freshness ramp survives intact — the cells simply take the key light and
+   * the environment with everything else on the stage, and the sheet becomes
+   * a surface in the room instead of a rectangle laid over it.
+   */
+  const cellMaterial = new THREE.MeshStandardMaterial({
+    metalness: 0.04,
+    roughness: 0.58,
+  });
 
   const cells = new THREE.InstancedMesh(cellGeometry, cellMaterial, count);
 
