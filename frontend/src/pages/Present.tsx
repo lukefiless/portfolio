@@ -10,7 +10,7 @@ import BlueprintPanel from "./present/BlueprintPanel";
 import SynopsisPanel from "./present/SynopsisPanel";
 import MarketPanel from "./present/MarketPanel";
 import NotesPanel, { paperEdge } from "./present/NotesPanel";
-import { createBoatAct } from "./present/acts/boatAct";
+import { createOnboardingAct } from "./present/acts/onboardingAct";
 import { createCabinetAct } from "./present/acts/cabinetAct";
 import { createProjectsAct } from "./present/acts/projectsAct";
 import { createPipelineAct } from "./present/acts/pipelineAct";
@@ -252,7 +252,7 @@ export default function Page() {
     const cogAct = createCogAct();
     const pipelineAct = createPipelineAct();
     const architectureAct = createArchitectureAct();
-    const boatAct = createBoatAct();
+    const onboardingAct = createOnboardingAct();
     const cabinetAct = createCabinetAct();
     const projectsAct = createProjectsAct();
     const puzzleAct = createPuzzleAct();
@@ -264,7 +264,7 @@ export default function Page() {
       cogAct.root,
       pipelineAct.root,
       architectureAct.root,
-      boatAct.root,
+      onboardingAct.root,
       projectsAct.root,
       puzzleAct.root,
       localAiAct.root,
@@ -331,7 +331,7 @@ export default function Page() {
         cogAct.reset();
         pipelineAct.reset();
         architectureAct.reset();
-        boatAct.reset();
+        onboardingAct.reset();
         cabinetAct.reset();
         projectsAct.reset();
         puzzleAct.reset();
@@ -478,7 +478,8 @@ export default function Page() {
       pipelineAct.root.visible = !inEntry && slide.act.kind === "pipeline";
       architectureAct.root.visible =
         !inEntry && slide.act.kind === "architecture";
-      boatAct.root.visible = !inEntry && slide.act.kind === "boat";
+      onboardingAct.root.visible =
+        !inEntry && slide.act.kind === "onboarding";
       projectsAct.root.visible = !inEntry && slide.act.kind === "projects";
       puzzleAct.root.visible = !inEntry && slide.act.kind === "puzzle";
       localAiAct.root.visible = !inEntry && slide.act.kind === "local-ai";
@@ -560,10 +561,10 @@ export default function Page() {
         ownedAct.update(delta, {
           owned: sampleScalar(slide.act.owned, actTime),
         });
-      } else if (slide.act.kind === "boat") {
-        boatAct.setAccent(accent);
-        boatAct.update(delta, {
-          swell: sampleScalar(slide.act.swell, actTime),
+      } else if (slide.act.kind === "onboarding") {
+        onboardingAct.setAccent(accent);
+        onboardingAct.update(delta, {
+          automated: sampleScalar(slide.act.automated, actTime),
         });
       } else {
         projectsAct.setAccent(accent);
@@ -601,7 +602,7 @@ export default function Page() {
         cogAct.root,
         pipelineAct.root,
         architectureAct.root,
-        boatAct.root,
+        onboardingAct.root,
         projectsAct.root,
         puzzleAct.root,
         localAiAct.root,
@@ -611,7 +612,7 @@ export default function Page() {
       cogAct.dispose();
       pipelineAct.dispose();
       architectureAct.dispose();
-      boatAct.dispose();
+      onboardingAct.dispose();
       cabinetAct.dispose();
       projectsAct.dispose();
       puzzleAct.dispose();

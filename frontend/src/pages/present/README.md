@@ -29,7 +29,9 @@ present/
   README.md          this
   slides.ts          THE DECK. Every slide, as data. You will edit this most.
   timeline.ts        samples a keyframe track at time t. You will not touch it.
-  stage.ts           lights, lens, renderer, bloom. Tune the LOOK here.
+  stage.ts           lights, lens, renderer, bloom, sketch. Tune the LOOK here.
+  sketch.ts          the ink-and-wash pass. Mechanism only; numbers are above.
+  layers.ts          the two opt-outs: "do not outline this" / "do not draw it"
   BlueprintPanel.tsx a 2D SVG overlay, used by one slide
 
   acts/
@@ -38,7 +40,7 @@ present/
     cogAct.ts          gear train                  kind: "cog"
     pipelineAct.ts     Wealthbox -> database       kind: "pipeline"
     projectsAct.ts     six-project grid            kind: "projects"
-    funnelAct.ts       onboarding funnel           kind: "onboarding"
+    onboardingAct.ts   clients through a door      kind: "onboarding"
     architectureAct.ts containers                  kind: "architecture"
     dataGapAct.ts      two sources, one database   kind: "data-gap"
     localAiAct.ts      a room of workers           kind: "local-ai"
@@ -112,8 +114,28 @@ forget, because the dispatch in `Present.tsx` is exhaustively narrowed on
 **Hide a slide without deleting it** — set `hidden: true`. It stays in the
 file, still typechecked, and disappears from everything downstream.
 
-**Change the overall look** — `stage.ts`. Lights, exposure and bloom live
-there and nowhere else.
+**Change the overall look** — `stage.ts`. Lights, exposure, bloom and the
+sketch settings live there and nowhere else.
+
+**Make it sharper (or cheaper)** — `RENDER_SCALE` in `stage.ts`, which is how
+many buffer pixels are drawn per CSS pixel. The deck supersamples rather than
+using MSAA, because the ink lines are computed per pixel in a shader and
+multisampling cannot touch them; drawing larger and averaging down is the only
+thing that smooths a line that is not geometry. `MAX_BUFFER_PIXELS` gives the
+scale back on displays that are already dense, so the two never multiply into
+a gigabyte of render targets. Drop `RENDER_SCALE` to 1 if a machine struggles.
+
+**Make it more or less drawn** — the `SKETCH` block in `stage.ts`. `wash` is
+the main dial: it is how opaque the paper is over the render, and it is the
+whole difference between "a render with outlines" and "a drawing". Everything
+in the deck is drawn automatically, including acts that do not exist yet —
+see below for the cases where that is wrong.
+
+**Keep something out of the drawing** — `markUndrawn(root)` in the act, which
+is what the filing cabinet does. It is the deck's one deliberate exemption
+rather than a technical workaround: the cabinet and its folders are the real
+object, and everything that comes out of them is a drawing. `layers.ts` has
+the reasoning and the weaker `NO_INK_LAYER` variant.
 
 **Change what things are made of** — `parts/materials.ts`. One palette; acts
 should not declare their own materials.
@@ -152,6 +174,14 @@ pale surface under a strong key arrives at the bloom pass well above 1 and
 turns into a lamp. If something washes out, the fix is the material or the
 rig — not the bloom settings. Nothing diffuse should be pale; contrast comes
 from finish, not brightness.
+
+**Adding an invisible mesh and forgetting it gets outlined.** The sketch pass
+finds edges from depth and normals, so it has no idea a `ShadowMaterial` floor
+or a transparent decal is not meant to be seen — it draws the silhouette
+anyway. A 200-unit shadow-catcher plane inked its own far edge as a hard
+horizon across three slides, which is exactly the horizon that material was
+chosen to avoid. If a mesh exists for some reason other than being looked at,
+give it `layers.set(NO_INK_LAYER)`; `layers.ts` has the whole rule.
 
 **`BoxGeometry` as a placeholder.** A cube has no silhouette and razor edges
 that catch no light. Use `parts/props.ts`, or build with the same approach:

@@ -26,6 +26,7 @@ import * as THREE from "three";
 import type { Act } from "./act";
 
 import { SAGE_HEX } from "../palette";
+import { NO_INK_LAYER } from "../layers";
 
 import { clamp01, smootherstep } from "../parts/easing";
 
@@ -99,6 +100,10 @@ export function createOwnedAct(): OwnedAct {
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
+
+  /* Invisible except for the shadow, so it must not be drawn. See layers.ts. */
+  floor.layers.set(NO_INK_LAYER);
+
   root.add(floor);
 
   /* ----------------------------------------------------------- the bench */

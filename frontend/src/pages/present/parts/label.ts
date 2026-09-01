@@ -20,6 +20,8 @@
 
 import * as THREE from "three";
 
+import { NO_INK_LAYER } from "../layers";
+
 /*
  * Stack rather than a single family: whichever of these the presenting
  * machine has, all of them are fixed-pitch, so the tracking maths holds and
@@ -101,9 +103,6 @@ export function createLabel(text: string, options: LabelOptions): Label {
     lit = false,
   } = options;
 
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-
   const font = `${weight} ${FONT_PX}px ${family}`;
 
   const characters = [...text];
@@ -111,11 +110,29 @@ export function createLabel(text: string, options: LabelOptions): Label {
   const spacing = FONT_PX * tracking;
 
   /**
-   * Measure, size the canvas, and draw. Kept as one function because the
-   * measure and the draw MUST agree on the same advance list, and because a
-   * webfont label has to run the whole thing twice.
+   * Paint one text onto a FRESH canvas and hand it back with its aspect.
+   *
+   * A new canvas every call, never a reused one, because a repaint on the
+   * SAME canvas depends on resizing it to actually clear the old pixels — and
+   * that assumption breaks the moment a repaint lands on the same rounded
+   * width the previous paint did. The fallback pass and the webfont pass
+   * measure the same string in two different fonts, which only rarely
+   * produces the same total width by coincidence, so most labels never showed
+   * it. But the tab labels on the filing cabinet do it on nearly every word,
+   * because the fallback (a generic serif, since Caveat has no fallback
+   * stack of its own) and the loaded handwriting font track close enough
+   * through most of a short word that only the last letter or two drifts far
+   * enough to stop overlapping — which is exactly why the ghost only ever
+   * showed as a trailing fragment, on every tab, once the handwritten face
+   * had loaded in.
+   *
+   * A fresh canvas sidesteps the question entirely: there is no old bitmap to
+   * fail to clear.
    */
-  const paint = () => {
+  const paint = (): { canvas: HTMLCanvasElement; aspect: number } => {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
     let advances: number[] = [];
     let run = 0;
 
@@ -154,11 +171,13 @@ export function createLabel(text: string, options: LabelOptions): Label {
         x += advances[index] + spacing;
       });
     }
+
+    return { canvas, aspect: canvas.width / Math.max(canvas.height, 1) };
   };
 
-  paint();
+  const first = paint();
 
-  const texture = new THREE.CanvasTexture(canvas);
+  const texture = new THREE.CanvasTexture(first.canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
 
   /*
@@ -169,7 +188,7 @@ export function createLabel(text: string, options: LabelOptions): Label {
   texture.minFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
 
-  const aspect = canvas.width / Math.max(canvas.height, 1);
+  const aspect = first.aspect;
 
   const geometry = new THREE.PlaneGeometry(width, width / aspect);
 
@@ -203,6 +222,21 @@ export function createLabel(text: string, options: LabelOptions): Label {
   const mesh = new THREE.Mesh(geometry, material);
 
   /*
+   * NOT OUTLINED.
+   *
+   * A label is a rectangle of canvas standing in for writing, so the sketch
+   * pass — which knows only about depth and normals — would trace the
+   * rectangle. That draws a hard box around every caption and, worse, a
+   * second box around the handwriting on each file tab, a millimetre off the
+   * tab's own outline. See `layers.ts`; the text itself is unaffected, since
+   * this hides the plane from the normal prepass only.
+   */
+  mesh.layers.set(NO_INK_LAYER);
+
+  /* Swapped out from under `dispose` by the repaint below, if one runs. */
+  let liveTexture = texture;
+
+  /*
    * THE WEBFONT REPAINT
    *
    * Acts are built at page load, and a Google font has almost certainly not
@@ -211,24 +245,32 @@ export function createLabel(text: string, options: LabelOptions): Label {
    * monospace and stays that way for the life of the page — with no error and
    * nothing in the console to explain it.
    *
-   * So a label that asked for a specific family loads it, then paints again.
-   * The second pass re-measures, which matters as much as the redraw: a
-   * handwritten face is a completely different width to the fallback, and
-   * the plane's aspect has to be rebuilt to match or the text comes out
-   * stretched.
+   * So a label that asked for a specific family loads it, then paints again —
+   * onto a NEW canvas and a NEW texture, not the original one. See the note
+   * on `paint` for why reusing the canvas is what was putting a ghost of the
+   * fallback word under the repainted one.
    */
-  if (family !== FONT_STACK && typeof document !== "undefined" && document.fonts) {
+  if (
+    family !== FONT_STACK &&
+    typeof document !== "undefined" &&
+    document.fonts
+  ) {
     document.fonts
       .load(font, text)
       .then(() => {
-        paint();
+        const repaint = paint();
 
-        texture.needsUpdate = true;
+        const nextTexture = new THREE.CanvasTexture(repaint.canvas);
+        nextTexture.colorSpace = THREE.SRGBColorSpace;
+        nextTexture.minFilter = THREE.LinearFilter;
+        nextTexture.generateMipmaps = false;
 
-        const repainted = canvas.width / Math.max(canvas.height, 1);
+        material.map = nextTexture;
+        liveTexture.dispose();
+        liveTexture = nextTexture;
 
         mesh.geometry.dispose();
-        mesh.geometry = new THREE.PlaneGeometry(width, width / repainted);
+        mesh.geometry = new THREE.PlaneGeometry(width, width / repaint.aspect);
       })
       .catch(() => {
         /* Fallback face is already on screen; nothing to recover. */
@@ -242,7 +284,7 @@ export function createLabel(text: string, options: LabelOptions): Label {
       /* `mesh.geometry`, not `geometry` — the repaint above may have replaced it. */
       mesh.geometry.dispose();
       material.dispose();
-      texture.dispose();
+      liveTexture.dispose();
     },
   };
 }

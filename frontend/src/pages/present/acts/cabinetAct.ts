@@ -40,6 +40,7 @@ import * as THREE from "three";
 import type { Act } from "./act";
 
 import { SAGE_HEX } from "../palette";
+import { markUndrawn } from "../layers";
 import { createCabinet, type Cabinet } from "../parts/cabinet";
 
 /**
@@ -123,6 +124,26 @@ export function createCabinetAct(): CabinetAct {
   });
 
   root.add(cabinet.root);
+
+  /*
+   * THE CABINET IS NOT A DRAWING.
+   *
+   * Everything else on this stage is inked and washed onto paper; this is the
+   * one object that stays a solid, lit thing. That is the deck's own argument
+   * made in the finish rather than in the copy — the cabinet and the files in
+   * it are what already exists, and what comes OUT of a file is a drawing of
+   * something proposed. Outline the cabinet too and there is nothing left for
+   * the drawn look to mean.
+   *
+   * It also protects the ending of every file beat. The folder opens until its
+   * manila fills the frame and the deck cuts to a flat slide of the same
+   * manila; a wash over the folder but not over that background — or the
+   * reverse — turns the deck's one invisible cut into its most visible one.
+   *
+   * Marked AFTER `root.add`, and by traversal, because layers are not
+   * inherited. See `markUndrawn`.
+   */
+  markUndrawn(root);
 
   /**
    * One frame. Both drawers are posed every frame from the slide's tracks;

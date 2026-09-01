@@ -146,17 +146,18 @@ export type ActTrack =
       owned: readonly Keyframe<number>[];
     }
   | {
-      kind: "boat";
+      kind: "onboarding";
 
       /**
-       * 0 = a flat calm, 1 = a working swell.
+       * 0 = each client is stopped at the door and logged by hand.
+       * 1 = they walk straight in, closer together and quicker.
        *
-       * Drives the water and the ship together. The ship reads the water
-       * rather than keeping its own time, so there is no separate control
-       * for how hard it rocks — and there could not be one without the two
-       * falling out of agreement.
+       * Drives the walking speed and the wait at the threshold together,
+       * because they are the same claim — the pause is what "by hand" looks
+       * like, and there is no version of this where somebody is being written
+       * down at the door AND the queue is moving briskly.
        */
-      swell: readonly Keyframe<number>[];
+      automated: readonly Keyframe<number>[];
     };
 
 /** One line of the closing summary. */
@@ -977,8 +978,24 @@ const deck: readonly Slide[] = [
      * because the act now plays on the right leaf only — see ACT_SHIFT in
      * `Present.tsx` — and the tighter poses were framed for the full frame.
      */
-    camera: [{ at: 0, value: [42.4, 4.2, 39.8] }],
-    target: [{ at: 0, value: [0, 1.4, 0] }],
+    /*
+     * Three-quarter on to the doorway, from the side the clients arrive from.
+     *
+     * Square to the facade the building is a rectangle and the walk toward the
+     * door is straight at the lens, where it reads as people getting bigger
+     * rather than as people going somewhere. Off to the approach side, both
+     * legs of the journey are across the frame and the turn into the door is
+     * a turn you can see.
+     *
+     * Low, and barely above head height. Looking DOWN on this makes a floor
+     * plan of it — the door stops being a door and becomes a gap in a shape.
+     *
+     * HELD, and not a keyframe missing: this slide is a folder lying open on a
+     * desk, and a desk does not drift. The act's own loop is what keeps the
+     * frame from reading as frozen.
+     */
+    camera: [{ at: 0, value: [14.5, 4.6, 17] }],
+    target: [{ at: 0, value: [0.5, 1.4, 3] }],
 
     accent: [{ at: 0, value: SAGE }],
 
@@ -991,17 +1008,22 @@ const deck: readonly Slide[] = [
     background: [{ at: 0, value: FOLDER }],
 
     act: {
-      kind: "boat",
+      kind: "onboarding",
 
       /*
-       * Never zero. A dead flat sea reads as a mistake rather than as calm,
-       * and the slide opens already moving so there is no frame where the
-       * water looks like a floor.
+       * Opens ALREADY RUNNING, at a trudge, and never at zero — the door has
+       * to be busy from the first frame or the slide starts on an empty
+       * street and the loop has nothing to be a loop of.
+       *
+       * The turn is slow and lands late. The sheet on the left leaf says
+       * "had to be tracked by hand" before it says "now fully automated", so
+       * the queue is still stopping at the door while that first line is
+       * being read, and the change happens under the second.
        */
-      swell: [
-        { at: 0, value: 0.55 },
-        { at: 14, value: 1 },
-        { at: 32, value: 0.72 },
+      automated: [
+        { at: 0, value: 0.08 },
+        { at: 12, value: 0.12 },
+        { at: 24, value: 1 },
       ],
     },
   },

@@ -9,6 +9,8 @@
 
 import * as THREE from "three";
 
+import { NO_INK_LAYER } from "../layers";
+
 export interface ParticlePool {
   /** Add this to the scene once. */
   points: THREE.Points;
@@ -108,6 +110,13 @@ export function createParticlePool(
 
   /* Dots are unlit sprites; the stage rig must not dim them. */
   points.frustumCulled = false;
+
+  /*
+   * NOT OUTLINED. A dot has no volume to draw the edge of, and the sketch
+   * pass's override material would render the pool with no `gl_PointSize` at
+   * all. See `layers.ts`.
+   */
+  points.layers.set(NO_INK_LAYER);
 
   return {
     points,

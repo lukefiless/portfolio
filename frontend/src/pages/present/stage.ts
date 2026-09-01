@@ -26,6 +26,18 @@
  * Threshold is the setting that matters. Drop it and the whole image glows
  * and turns to soup; hold it high and the effect is a sheen on exactly the
  * things that are meant to be emitting.
+ *
+ * AND THEN IT IS DRAWN
+ *
+ * The last thing that happens to a frame is `sketch.ts`: a pen line on every
+ * silhouette and crease, a wash toward the paper colour, and a tooth of grain.
+ * The mechanism lives over there; the NUMBERS live here, under SKETCH below,
+ * because the deck's look should still be readable in one file.
+ *
+ * It is the reason the lighting rig above still matters rather than being
+ * washed away. The wash lowers contrast, it does not remove it — what survives
+ * is the form the key and rim built, which is what keeps a drawn cabinet
+ * reading as a solid object rather than as a flat shape with a line round it.
  */
 
 import * as THREE from "three";
@@ -35,12 +47,119 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
+import { BACKGROUND, TEXT } from "./palette";
+import { createSketchPass, type SketchOptions } from "./sketch";
+
 /*
  * Slides are composed against 16:9, the aspect a projector will actually
  * present at.
  */
 const DESIGN_ASPECT = 16 / 9;
 const DESIGN_FOV = 38;
+
+/**
+ * How many buffer pixels the deck draws per CSS pixel, along each axis.
+ *
+ * SUPERSAMPLING, and the reason it is worth the fill rate here rather than
+ * MSAA. Multisampling would smooth the geometry and do nothing at all for the
+ * ink, because the pen lines are not geometry — `sketch.ts` computes them per
+ * pixel, after the scene has been resolved. Rendering the whole chain larger
+ * and letting the final blit average it down is the only thing that
+ * antialiases a line that was invented in a shader.
+ *
+ * It is also why `antialias: true` on the renderer below does nothing on its
+ * own: the scene never reaches the default framebuffer, so that flag's
+ * multisampling is bypassed the moment a composer is in play.
+ *
+ * At 2 the deck draws four pixels for every one it shows.
+ */
+const RENDER_SCALE = 2;
+
+/**
+ * Ceiling on total buffer pixels, before the scale is given up.
+ *
+ * Roughly a 4K frame. Without it the scale multiplies against a display that
+ * is already dense: a 4K panel at ratio 2 asks for 33 megapixels, and at
+ * RGBA16F across the composer's two buffers, the bloom chain and the sketch
+ * pass's own normal target, that is most of a gigabyte for a slide deck.
+ */
+const MAX_BUFFER_PIXELS = 3840 * 2160;
+
+/**
+ * Buffer pixels per CSS pixel for a canvas of this size.
+ *
+ * Deliberately NOT `window.devicePixelRatio`. What matters for aliasing is how
+ * many samples land on a CSS pixel, and a dense display already supplies some
+ * of them — so the two are the same lever and asking for both multiplies into
+ * absurdity. A 1× display gets the full supersample; a 2× display is already
+ * at the target and the budget holds it there.
+ *
+ * The deck is usually presented through a projector or an external monitor,
+ * which is exactly the 1× case that needs this most.
+ */
+function renderScale(width: number, height: number): number {
+  const pixels = Math.max(width * height, 1);
+
+  const wanted = Math.max(window.devicePixelRatio || 1, RENDER_SCALE);
+
+  const affordable = Math.sqrt(MAX_BUFFER_PIXELS / pixels);
+
+  /* Never below 1: a deck blurrier than the screen it is on helps nobody. */
+  return Math.max(1, Math.min(wanted, affordable));
+}
+
+/**
+ * THE DRAWING. Every number that decides how sketched the deck looks.
+ *
+ * `wash` is the one to reach for first — it is the whole difference between
+ * "a render with outlines" and "a drawing". The rest hold their values well
+ * and were tuned together; moving `lineWidth` in particular wants a look at
+ * the two thresholds, since a fatter tap reads more of the scene as an edge.
+ *
+ * Ink and paper come from the palette rather than being picked here. The ink
+ * is the same value as the deck's body copy, so a line on the cabinet and a
+ * line of type on the slide beside it are made of the same stuff — which is
+ * most of why the 3D and the flat pages read as one document.
+ */
+const SKETCH: SketchOptions = {
+  ink: TEXT,
+  paper: BACKGROUND,
+
+  /*
+   * A fifth of the way to paper. It sounds like very little and is not: the
+   * mix runs in linear light, where lifting a dark value moves it much
+   * further perceptually than the number suggests. Past about 0.3 the
+   * cabinet stops being dark green at all and the deck loses its one solid
+   * object.
+   */
+  wash: 0.2,
+
+  grain: 0.055,
+
+  /*
+   * Not 1. A line that goes fully to ink is a vector stroke; holding a little
+   * of the surface under it is what a pen on textured paper actually does,
+   * and it keeps the accent colour faintly visible through lines drawn over
+   * a lit part.
+   */
+  strength: 0.95,
+
+  lineWidth: 1.35,
+
+  /*
+   * Getting on for two pixels of wander. Enough to read as drawn rather than
+   * computed, and still under the point where a straight edge stops looking
+   * straight — a filing cabinet whose sides visibly bend reads as a mistake,
+   * not as a style.
+   */
+  wobble: 1.9,
+
+  /* Pen pressure. Past about 0.5 the fainter creases start dropping out. */
+  pressure: 0.38,
+
+  depthThreshold: 0.022,
+  normalThreshold: 0.22,
+};
 
 export interface Stage {
   scene: THREE.Scene;
@@ -91,7 +210,15 @@ export function createStage(
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.02;
 
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  /*
+   * A starting value only. `resize` runs before the first frame and decides
+   * this properly against the canvas size — but the composer copies the
+   * renderer's ratio when it is constructed below, so it must not be left at
+   * the default 1 until then.
+   */
+  renderer.setPixelRatio(
+    renderScale(canvasHost.clientWidth || 1920, canvasHost.clientHeight || 1080)
+  );
 
   /*
    * Only the key casts. A second shadowing light doubles the cost and, on a
@@ -191,6 +318,15 @@ export function createStage(
   composer.addPass(bloom);
 
   /*
+   * The drawing, over the top of the lit and bloomed image and under the tone
+   * map. See the note on chain order in `sketch.ts` — both neighbours here are
+   * load-bearing, and swapping either one changes what the ink means.
+   */
+  const sketch = createSketchPass(scene, camera, renderer, SKETCH);
+
+  composer.addPass(sketch.pass);
+
+  /*
    * Tone mapping and colour space conversion move to the END of the chain.
    * Without this the bloom pass works on already-encoded sRGB values and the
    * halo comes out washed and grey instead of taking the colour of whatever
@@ -226,14 +362,43 @@ export function createStage(
 
     camera.updateProjectionMatrix();
 
+    /*
+     * Resolution is decided HERE and pushed to both, every resize, because the
+     * budget depends on the window size — a scale that is comfortable in a
+     * half-width browser is not comfortable full-screen on a 4K panel.
+     *
+     * `composer.setPixelRatio` matters as much as the renderer's: the composer
+     * captured a ratio when it was built and sizes every pass's buffers from
+     * its own copy, so setting only the renderer would supersample the scene
+     * into buffers that were still the old size.
+     */
+    const ratio = renderScale(width, height);
+
+    renderer.setPixelRatio(ratio);
+    composer.setPixelRatio(ratio);
+
     renderer.setSize(width, height);
     composer.setSize(width, height);
-    bloom.setSize(width, height);
+
+    /*
+     * `bloom.setSize` is NOT called here, and that is the fix rather than an
+     * omission. `composer.setSize` already calls it, with the buffer size in
+     * DEVICE pixels; calling it again with CSS pixels overwrote that with a
+     * smaller number and left the bloom chain running at a quarter of the
+     * pixels on any display with a pixel ratio of two.
+     */
   };
 
   const dispose = () => {
     environment.texture.dispose();
     scene.environment = null;
+
+    /*
+     * Explicitly, and before the composer. `EffectComposer.dispose` frees its
+     * own two buffers and nothing a pass allocated for itself, so the sketch
+     * pass's normal target would survive every visit to /present.
+     */
+    sketch.dispose();
 
     composer.dispose();
 
