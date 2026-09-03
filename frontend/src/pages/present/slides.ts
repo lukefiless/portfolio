@@ -14,6 +14,9 @@ import { TRIP } from "./acts/pipelineAct";
 import { DRAWER_PITCH } from "./parts/cabinet";
 import { BACKGROUND, FOLDER, GOLD, SAGE } from "./palette";
 import type { Keyframe } from "./timeline";
+import type { DevSecOpsPart } from "./DevSecOpsHeader";
+import type { AppTile } from "./AppsPanel";
+import type { OpsArea } from "./OpsPanel";
 
 /**
  * When the person stops being the mechanism. Two complete trips, so the
@@ -92,6 +95,56 @@ export type ActTrack =
        * the whole first half turns on.
        */
       upper: readonly Keyframe<number>[];
+
+      /**
+       * Take a file out while the drawer is open, without a file BEAT.
+       *
+       * The `entry` mechanism at the top of a slide already does this, but it
+       * always ends by opening the folder until its manila fills the frame —
+       * that is what makes the cut into a project slide invisible. The handoff
+       * wants the other half of the gesture: a file lifted clear of the drawer
+       * and held there, going no further.
+       *
+       * `open` is the same 0..1 the act takes, so keep it well under 1 unless
+       * the intention really is to end on a frame of nothing but folder.
+       */
+      present?: {
+        drawer: number;
+        file: number;
+        open: readonly Keyframe<number>[];
+
+        /**
+         * Seconds into the slide after which nothing is presented at all.
+         *
+         * The file stops being drawn OUTRIGHT rather than being animated back
+         * into the drawer, because there is no honest way to put it back: it
+         * has just been handed to the page as the corner mark, and running the
+         * lift in reverse would show the audience the deck taking it away
+         * again. The cut is masked by the mark arriving over the same spot on
+         * the same frame — which is the whole reason the two timings are
+         * pinned to each other.
+         */
+        until?: number;
+      };
+
+      /**
+       * 0 = the cabinet stands where it always has, 1 = it is out of frame.
+       *
+       * The deck's last gesture with the furniture, and only the handoff uses
+       * it. Runs AFTER the file is out, so what leaves the frame is a cabinet
+       * with its drawers shut and nothing left in it that the deck still
+       * needs — the file it was holding is by then the page's corner mark.
+       */
+      exit?: readonly Keyframe<number>[];
+
+      /**
+       * 0 = the file is still the cabinet's, 1 = it is the page's corner mark.
+       *
+       * Runs from the moment `present.until` retires the file, so the same
+       * frame that stops the cabinet posing it starts this holding it. The two
+       * are one handover and have to be written as one.
+       */
+      park?: readonly Keyframe<number>[];
     }
   /*
    * The two FLAT kinds.
@@ -120,6 +173,113 @@ export type ActTrack =
 
       /** Six is what the layout is built around. */
       roles: readonly MarketRole[];
+    }
+  | {
+      kind: "security";
+
+      /**
+       * Which third of "DevSecOps" this page is, if any.
+       *
+       * Set, and the page is headed by the word itself with this syllable
+       * brought forward and its discipline named underneath — see
+       * `DevSecOpsHeader`. Three pages carry it in a row, so the heading is
+       * one word being examined a part at a time rather than three unrelated
+       * titles.
+       *
+       * Left off, the page falls back to its own `title`. The kind is shared
+       * because all three pages are the same object: a ruled table of things
+       * that exist, each with the place it actually lives.
+       */
+      part?: DevSecOpsPart;
+
+      /** The page's headline, used only when `part` is absent. */
+      title: string;
+
+      /**
+       * One line under the headline, explaining what the cells are.
+       *
+       * It exists so the cells do not each have to carry a "where we use it"
+       * label. Said once at the top, the structure is understood for all of
+       * them and the table stays quiet.
+       */
+      lede: string;
+
+      /** Six is what the layout is built around; more wrap, fewer is fine. */
+      measures: readonly SecurityMeasure[];
+
+      /** Footnote. Leave empty and the rule and the line are both omitted. */
+      note: string;
+    }
+  | {
+      kind: "apps";
+
+      /**
+       * Which third of "DevSecOps" this page is. See `part` on the security
+       * kind — the two pages share a head and nothing else, which is what
+       * lets the run read as one document with three chapters.
+       */
+      part?: DevSecOpsPart;
+
+      /** The page's headline, used only when `part` is absent. */
+      title: string;
+
+      /** One line under the heading. */
+      lede: string;
+
+      /** Five is what the layout is drawn for: three across, then two centred. */
+      apps: readonly AppTile[];
+
+      /** Footnote. Leave empty and the rule and the line are both omitted. */
+      note: string;
+    }
+  | {
+      kind: "ops";
+
+      /**
+       * Which third of "DevSecOps" this page is. See `part` on the security
+       * kind — the three pages share a head and nothing below it.
+       */
+      part?: DevSecOpsPart;
+
+      /** The page's headline, used only when `part` is absent. */
+      title: string;
+
+      /** One line under the heading. */
+      lede: string;
+
+      /** The claim, set large down the left. This is the pitch. */
+      claim: string;
+
+      /** A paragraph under the claim. Empty omits it. */
+      support: string;
+
+      /** The areas of the job. Five is what the rail is drawn for. */
+      areas: readonly OpsArea[];
+
+      /** The closing line, under a rule at the foot. Empty omits both. */
+      note: string;
+    }
+  | {
+      kind: "diagram";
+
+      /** The page's headline. */
+      title: string;
+
+      /** One line under it. Empty omits it. */
+      lede: string;
+
+      /**
+       * Path to the drawing, under `public/` and without it — so a file at
+       * `public/diagrams/architecture.png` is "/diagrams/architecture.png".
+       * Empty renders a placeholder rather than a broken image.
+       */
+      src: string;
+
+      /** Alt text. Say what the diagram SHOWS. */
+      alt: string;
+
+      /** Optional note under it — a legend, a date, a caveat. */
+      caption: string;
     }
   | {
       kind: "puzzle";
@@ -167,6 +327,36 @@ export interface SynopsisPoint {
 
   /** One line on what it showed. */
   note: string;
+}
+
+/**
+ * One control on the security page.
+ *
+ * The four fields are deliberately a fixed shape rather than free text: the
+ * page's whole argument is that every measure has BOTH a standard behind it
+ * and a place it actually lives, and a cell that cannot show the second half
+ * is a claim without evidence. `applied` is the field the room is really
+ * reading.
+ */
+export interface SecurityMeasure {
+  /** The control, in plain words. Set large; keep it to a few. */
+  header: string;
+
+  /**
+   * The standard, protocol or tool behind it — "TLS 1.3", "OAuth 2.0".
+   * Leave empty and the line is omitted.
+   */
+  subheader: string;
+
+  /** What it is and why it matters, in a line or two. */
+  description: string;
+
+  /**
+   * Where it lives in OUR system, under the divider. This is the half that
+   * turns a checklist into evidence, so it is worth being specific: name the
+   * service, the layer, the repo.
+   */
+  applied: string;
 }
 
 /** One opening on the market slide. */
@@ -256,14 +446,20 @@ export interface Slide {
   hidden?: boolean;
 
   /**
-   * Strips the page furniture: no copy block, no vignette. For a slide whose
-   * act IS the whole statement and wants the frame to itself.
-   *
-   * The vignette exists to hold the copy legible against a lit machine, so a
-   * slide with no copy has nothing for it to do — and it darkens the corners,
-   * which is exactly where a centred grid puts its outermost cells.
+   * Strips the page furniture: no copy block. For a slide whose act IS the
+   * whole statement and wants the frame to itself.
    */
   bare?: boolean;
+
+  /**
+   * Keep the corner mark on screen — the real file, parked against the lens.
+   *
+   * For every page after the handoff. The cabinet itself is not drawn on these
+   * slides; only the one file it gave up, held in the corner by `cabinetAct`.
+   * It needs no camera of its own, because the mark is pinned to whatever
+   * camera the slide already has.
+   */
+  fileMark?: boolean;
 
   /**
    * Notes clipped inside an opened folder, down the left of frame.
@@ -319,17 +515,78 @@ export interface SlideEntry {
   duration: number;
 
   /**
-   * The cabinet's own ground, held for as long as the cabinet is on stage.
+   * The ground behind the beat, over the beat's own clock.
    *
-   * Not the slide's background, which is manila: that is the colour of the
-   * INSIDE of the folder this beat is opening, and painting the room it is
-   * being opened in with it would flash the moment the camera pulls back to
-   * the drawer.
+   * A TRACK rather than one colour, so a beat CAN cross between the deck's two
+   * grounds under the cover of the folder if it ever needs to. None of them
+   * currently does: every beat holds the room's grey, and the manila belongs
+   * to the pages either side of it.
+   *
+   * That was tried the other way — manila across a swap, so the corners never
+   * flip while the folder crosses them — and it cost more than it fixed. A
+   * beat that opens on a full screen of folder colour reads as heavy, and the
+   * drawer it pulls back to is then seen against the inside of a file. The
+   * corners are a smaller price than the page not opening cleanly.
    */
-  background: string;
+  background: readonly Keyframe<string>[];
 
   camera: readonly Keyframe<Vec3>[];
   target: readonly Keyframe<Vec3>[];
+
+  /**
+   * THE HANDOFF VARIANT.
+   *
+   * Present, and this beat stops being a file swap and becomes whatever these
+   * tracks say — the cabinet posed directly, on the entry's own clock, before
+   * the slide's page appears.
+   *
+   * It exists so the deck's one transition out of the cabinet does not need a
+   * slide of its own. As a slide it left a blank page in the running order:
+   * the cabinet leaves, and then the audience sits looking at an empty room
+   * until somebody clicks. As an entry the same animation runs and the page it
+   * was leading to is simply THERE when it finishes.
+   *
+   * `drawer`, `from`, `file` and `handover` are ignored when this is set.
+   */
+  handoff?: {
+    /**
+     * The file that is still out, and when it is back in its drawer.
+     *
+     * The slide before the handoff ends on an open folder filling the frame,
+     * exactly as every project slide does — so this beat has to START by
+     * putting that folder away, or the deck cuts from a full-frame folder to a
+     * drawer that has silently swallowed it. Every other file beat does this
+     * through `from`; the handoff needs its own because it goes on to open the
+     * OTHER drawer rather than taking another file out of this one.
+     */
+    returnDrawer: number;
+    returnFile: number;
+    returnUntil: number;
+
+    lower: readonly Keyframe<number>[];
+    upper: readonly Keyframe<number>[];
+
+    /** Which file comes out, and how far. See `present` on the cabinet act. */
+    presentDrawer: number;
+    presentFile: number;
+    open: readonly Keyframe<number>[];
+
+    /** When the file stops being the cabinet's and becomes the corner mark. */
+    until: number;
+
+    /**
+     * Extra height for the file as it comes out, in drawer-local units.
+     *
+     * The staging pose only brings a file FORWARD, not up — see `rise` in
+     * `parts/cabinet.ts`. Without this the folder held at staging projects low
+     * enough to sit over the drawer beneath it, and reads as having come out
+     * of the wrong one.
+     */
+    rise: readonly Keyframe<number>[];
+
+    park: readonly Keyframe<number>[];
+    exit: readonly Keyframe<number>[];
+  };
 }
 
 /* ------------------------------------------------------ the file beat poses
@@ -505,7 +762,17 @@ const deck: readonly Slide[] = [
    */
   {
     id: "contents-done",
-    duration: 16,
+
+    /*
+     * ELEVEN, NOT SIXTEEN. Every number on this slide was cut by a third.
+     *
+     * The slide has one event in it — a drawer coming out — and the original
+     * timing spent five seconds easing the camera down before it started and
+     * another six holding on the tabs afterwards. Read aloud, the line above
+     * it is over in four. What is left is the same move at a pace that keeps
+     * up with the person saying it.
+     */
+    duration: 11,
     layout: "bottom",
 
     copy: [{ at: 0, value: { title: "What is already built." } }],
@@ -524,14 +791,14 @@ const deck: readonly Slide[] = [
       { at: 0, value: [5.2, 5.4, 9.6] },
       //{ at: 5.2, value: [1.2, 5.8, 9.4] },
       //{ at: 10.5, value: [-3.13, 3.33, 9.62] },
-      { at: 10, value: [-3.13, 4.33, 9.62] },
+      { at: 6, value: [-3.13, 4.33, 9.62] },
     ],
 
     target: [
       { at: 0, value: [0, 1.2, 0] },
       //{ at: 5.2, value: [-0.2, 0.4, 1.5] },
       //{ at: 10.5, value: [-0.4, -0.15, 1.9] },
-      { at: 10, value: [-0.4, -0.15, 1.9] },
+      { at: 6, value: [-0.4, -0.15, 1.9] },
     ],
 
     accent: [{ at: 0, value: SAGE }],
@@ -547,8 +814,8 @@ const deck: readonly Slide[] = [
        */
       lower: [
         { at: 0, value: 0 },
-        { at: 1.6, value: 0 },
-        { at: 5.2, value: 1 },
+        { at: 0.9, value: 0 },
+        { at: 3.4, value: 1 },
       ],
 
       upper: [{ at: 0, value: 0 }],
@@ -559,16 +826,23 @@ const deck: readonly Slide[] = [
     id: "cog",
 
     /*
-     * File 0 comes out of the drawer. Nothing to put away first, because the
-     * slide before this one is the contents shot — so the beat opens exactly
-     * where that slide left the camera and the cut into it is invisible.
+     * CUT FROM THE RUNNING ORDER, not deleted. The act, its keyframes and its
+     * copy are all still here and still typechecked.
+     *
+     * TO PUT IT BACK: unhide, restore "MISSION" to the head of `DONE` in
+     * `acts/cabinetAct.ts`, and shift the lower drawer's file indices back up
+     * by one — this slide takes file 0 with no `from`, and `how-it-arrives`
+     * returns to `from: 0, file: 1`. The drawer labels and these indices are
+     * two halves of the same list and have to be edited together.
      */
+    hidden: true,
+
     entry: {
       drawer: 0,
       file: 0,
       handover: 0,
       duration: TAKE_OUT,
-      background: BACKGROUND,
+      background: [{ at: 0, value: BACKGROUND }],
       camera: TAKE_OUT_CAMERA,
       target: TAKE_OUT_TARGET,
     },
@@ -659,16 +933,40 @@ const deck: readonly Slide[] = [
   {
     id: "how-it-arrives",
 
-    /* File 0 goes back, file 1 comes out. */
+    /*
+     * File 0 comes out of the drawer. Nothing to put away first, because the
+     * slide before this one is the contents shot — so the beat opens exactly
+     * where that slide left the camera and the cut into it is invisible.
+     *
+     * This inherited the opening slot when `cog` was hidden. A beat with no
+     * `from` is the one that OPENS a drawer, so exactly one slide per drawer
+     * may be written this way; give it a `from` and it will try to file a
+     * folder that was never taken out.
+     *
+     * AND IT TAKES THE TAKE-OUT TIMING, not the swap's.
+     *
+     * It kept `SWAP_CAMERA` when it inherited the slot, and that track starts
+     * at `FILL_EYE` — nose to an open folder — because a swap opens on the
+     * folder the previous slide left filling the frame. There is no such
+     * folder here: this beat opens on the contents shot. So the slide began
+     * with the lens jammed against nothing, pulled back to the drawer, and
+     * only then took the file out. `TAKE_OUT_*` starts where the contents
+     * slide actually leaves the camera, which is what makes the cut into it
+     * invisible.
+     */
     entry: {
       drawer: 0,
-      from: 0,
-      file: 1,
-      handover: SWAP_HANDOVER,
-      duration: SWAP,
-      background: BACKGROUND,
-      camera: SWAP_CAMERA,
-      target: SWAP_TARGET,
+      file: 0,
+
+      /* Nothing to put away, so the whole beat is the second move. */
+      handover: 0,
+
+      duration: TAKE_OUT,
+
+      /* Out of the contents shot, which stands in the room. */
+      background: [{ at: 0, value: BACKGROUND }],
+      camera: TAKE_OUT_CAMERA,
+      target: TAKE_OUT_TARGET,
     },
 
     /* ------------------------------------------------------------------
@@ -678,13 +976,13 @@ const deck: readonly Slide[] = [
      * not typed up. An empty string leaves a blank ruled line.
      * ---------------------------------------------------------------- */
     notes: {
-      heading: "sync-services",
+      heading: "Automations",
       lines: [
-        "WAS: one export done daily",
-        "  a bloated system constantly freezing",
-        "  regularly letting data expire",
-        "NOW: records arrive on their own",
-        "  a 5 minute loop keeping data modern",
+        "Used to be one export done daily",
+        "A bloated system constantly freezing",
+        "It would regularly letting data expire",
+        "Now the records arrive on their own",
+        "A 5 minute loop keeps data modern",
       ],
     },
     duration: HANDOVER + 10,
@@ -779,14 +1077,25 @@ const deck: readonly Slide[] = [
   {
     id: "projects",
 
-    /* File 1 goes back, file 2 comes out. */
+    /* File 0 goes back, file 1 comes out. */
     entry: {
       drawer: 0,
-      from: 1,
-      file: 2,
+      from: 0,
+      file: 1,
       handover: SWAP_HANDOVER,
       duration: SWAP,
-      background: BACKGROUND,
+
+      /*
+       * The room's ground, for the whole beat.
+       *
+       * Manila was tried and it is worse. It holds the ground at folder colour
+       * from the first frame, so the beat opens on a full screen of manila and
+       * the drawer it pulls back to is seen against the inside of a file —
+       * which weighs the cut down instead of letting the page simply open.
+       * What the corners do while the folder crosses them is not worth that.
+       */
+      background: [{ at: 0, value: BACKGROUND }],
+
       camera: SWAP_CAMERA,
       target: SWAP_TARGET,
     },
@@ -798,7 +1107,7 @@ const deck: readonly Slide[] = [
      * not typed up. An empty string leaves a blank ruled line.
      * ---------------------------------------------------------------- */
     notes: {
-      heading: "Six Processes",
+      heading: "Processes",
       lines: [
         "Executive dashboards",
         "Notes-Importer",
@@ -826,7 +1135,14 @@ const deck: readonly Slide[] = [
      * because a survey the audience is reading should not be moving under
      * them.
      */
-    camera: [{ at: 0, value: [-1, 2.85, 20.4] }],
+    /*
+     * IN FROM 20.4. The grid is framed into the right leaf of an open folder,
+     * which is roughly a third of the screen, and at the old distance the six
+     * mechanisms were postage stamps in the middle of it — legible, but not
+     * worth looking at. A quarter closer fills the leaf and still leaves the
+     * outermost cells clear of the frame edge on 16:9.
+     */
+    camera: [{ at: 0, value: [-1, 2.85, 16.4] }],
     target: [{ at: 0, value: [-1, 2.85, 0] }],
     accent: [{ at: 0, value: SAGE }],
     /*
@@ -839,27 +1155,16 @@ const deck: readonly Slide[] = [
     act: {
       kind: "projects",
       /*
-       * Held dark for a beat before anything arrives.
+       * ON FROM FRAME ONE. No hold, no ramp, no per-cell stagger.
        *
-       * This is the one slide with no copy, so there is no headline to read
-       * while the grid assembles — starting the fade on frame one means the
-       * six are already resolving before an audience has finished registering
-       * that the screen changed at all. The pause gives the cut somewhere to
-       * land, and the arrival then reads as an event rather than as the tail
-       * of the transition.
+       * The grid used to assemble itself: a beat of empty stage, then the six
+       * fading up one after another. It was the only act in the deck that made
+       * the audience wait to find out what the slide was, and on a page whose
+       * whole job is "here is the survey" that is a cost with no return — the
+       * presenter is already talking about the six by the time the sixth
+       * arrives.
        */
-      /*
-       * A short hold, then in. The pause is there to give the cut somewhere
-       * to land — but the ramp behind it was nearly five seconds on top of a
-       * per-cell stagger, which is a long time to watch a grid decide whether
-       * it is arriving.
-       */
-      shown: [
-        { at: 0, value: 0 },
-        { at: 0.7, value: 0 },
-        { at: 3.1, value: 1 },
-        { at: 26, value: 1 },
-      ],
+      shown: [{ at: 0, value: 1 }],
     },
   },
 
@@ -924,14 +1229,25 @@ const deck: readonly Slide[] = [
   {
     id: "onboarding",
 
-    /* File 2 goes back, file 3 comes out — the last of the finished work. */
+    /* File 1 goes back, file 2 comes out — the last of the finished work. */
     entry: {
       drawer: 0,
-      from: 2,
-      file: 3,
+      from: 1,
+      file: 2,
       handover: SWAP_HANDOVER,
       duration: SWAP,
-      background: BACKGROUND,
+
+      /*
+       * The room's ground, for the whole beat.
+       *
+       * Manila was tried and it is worse. It holds the ground at folder colour
+       * from the first frame, so the beat opens on a full screen of manila and
+       * the drawer it pulls back to is seen against the inside of a file —
+       * which weighs the cut down instead of letting the page simply open.
+       * What the corners do while the folder crosses them is not worth that.
+       */
+      background: [{ at: 0, value: BACKGROUND }],
+
       camera: SWAP_CAMERA,
       target: SWAP_TARGET,
     },
@@ -947,6 +1263,7 @@ const deck: readonly Slide[] = [
       lines: [
         "New Clients / Prospects had to be tracked by hand",
         "Now tracking is fully automated",
+        "Workflows are now organized and optimized to make sure no steps are missed",
       ],
     },
     duration: 32,
@@ -990,12 +1307,20 @@ const deck: readonly Slide[] = [
      * Low, and barely above head height. Looking DOWN on this makes a floor
      * plan of it — the door stops being a door and becomes a gap in a shape.
      *
+     * BACK AND UP FROM WHERE IT WAS, because the building is now two storeys
+     * tall and six and a half metres deep (see WALL_HEIGHT and BUILDING_DEPTH
+     * in the act). Left at 17 units and aimed at 1.4 it grew straight off the
+     * top of the leaf and the name went with it; at 19.5 the mass reached past
+     * the right edge as it receded. The aim sits above the door head rather
+     * than on it, which drops the whole frontage into the frame and leaves the
+     * pavement its own space underneath.
+     *
      * HELD, and not a keyframe missing: this slide is a folder lying open on a
      * desk, and a desk does not drift. The act's own loop is what keeps the
      * frame from reading as frozen.
      */
-    camera: [{ at: 0, value: [14.5, 4.6, 17] }],
-    target: [{ at: 0, value: [0.5, 1.4, 3] }],
+    camera: [{ at: 0, value: [15.2, 6.9, 21.5] }],
+    target: [{ at: 0, value: [0.5, 4.4, 3] }],
 
     accent: [{ at: 0, value: SAGE }],
 
@@ -1056,30 +1381,64 @@ const deck: readonly Slide[] = [
    * slide; the two simply agree on where the camera is.
    */
   {
-    id: "whats-to-come",
-    duration: 13,
-    layout: "bottom",
-
-    copy: [{ at: 0, value: { title: "What's to come." } }],
+    id: "handoff",
 
     /*
-     * Rises with the drawers. The camera starts on the lower drawer it has
-     * been living in for four slides, and climbs to the upper one as the
-     * swap happens, so the move is the argument: this is the same cabinet,
-     * one drawer up.
+     * CUT FROM THE RUNNING ORDER — its animation moved onto the synopsis
+     * slide's `entry`, where it plays as that page's way in rather than as a
+     * slide of its own that ends on an empty room. Kept because the tracks
+     * below are the authored timing, and the entry copies them.
+     */
+    hidden: true,
+    duration: 14,
+    layout: "bottom",
+
+    /*
+     * No copy. The move IS the slide, and a headline over it would be
+     * narrating a gesture the room can already read.
+     */
+    bare: true,
+    copy: [],
+
+    /*
+     * THE HANDOFF, AND WHERE THE CORNER MARK COMES FROM.
+     *
+     * The last project file goes back, the lower drawer shuts, the UPPER one
+     * opens, and a single file rises out of it. That file is the deck's own
+     * summary, and from the next slide on it is the mark in the bottom right
+     * of every page — see `FileMark` — standing where the page counter used
+     * to. This slide exists to show the audience where that mark came from.
+     *
+     * So the camera does not walk away. It climbs one drawer, the way it did
+     * when this slide was the hinge into the proposal half, and pushes in on
+     * the file as it clears the drawer: the last thing on screen is the thing
+     * that is about to be sitting in the corner.
+     *
+     * The hold at the front matters. Leaving on frame zero reads as a cut;
+     * letting the lower drawer finish closing first reads as being done with
+     * it.
+     */
+    /*
+     * HOLDS ON THE DRAWER. It does NOT push in to `UPPER_FILL_EYE`, which is
+     * the pose a project slide ends on — that one is framed for a folder
+     * opening until its manila fills the screen, and against a file merely
+     * held up it puts the audience about a foot from a sheet of card.
+     *
+     * The file has to stay an OBJECT here, small enough to read as a thing
+     * that could sit in a corner, because that is exactly where it goes next.
      */
     camera: [
       { at: 0, value: DRAWER_EYE },
-      { at: 1.4, value: DRAWER_EYE },
-      { at: 7.6, value: UPPER_DRAWER_EYE },
-      { at: 13, value: UPPER_DRAWER_EYE },
+      { at: 1.2, value: DRAWER_EYE },
+      { at: 6.2, value: UPPER_DRAWER_EYE },
+      { at: 14, value: UPPER_DRAWER_EYE },
     ],
 
     target: [
       { at: 0, value: DRAWER_AIM },
-      { at: 1.4, value: DRAWER_AIM },
-      { at: 7.6, value: UPPER_DRAWER_AIM },
-      { at: 13, value: UPPER_DRAWER_AIM },
+      { at: 1.2, value: DRAWER_AIM },
+      { at: 6.2, value: UPPER_DRAWER_AIM },
+      { at: 14, value: UPPER_DRAWER_AIM },
     ],
 
     /*
@@ -1100,32 +1459,79 @@ const deck: readonly Slide[] = [
       kind: "cabinet",
 
       /*
-       * Held shut for a beat first, for the same reason `contents-done`
-       * holds: an event that starts on frame zero is not read as an event.
+       * The cross. The lower is most of the way shut before the upper starts,
+       * so the eye follows one drawer and is handed to the other rather than
+       * being asked to watch both at once — and the two are never both still,
+       * which is what would read as two events instead of one turn.
        */
       lower: [
         { at: 0, value: 1 },
-        { at: 1.4, value: 1 },
-        { at: 6.4, value: 0 },
+        { at: 1.2, value: 1 },
+        { at: 4.4, value: 0 },
+      ],
+
+      upper: [
+        { at: 0, value: 0 },
+        { at: 3.2, value: 0 },
+        { at: 6.2, value: 1 },
+
+        /*
+         * And shut again, with the file already out. The cabinet has to leave
+         * TIDY — a drawer hanging open on the way off stage reads as an
+         * object being dragged away, not as one being finished with.
+         */
+        { at: 10.2, value: 1 },
+        { at: 11.8, value: 0 },
       ],
 
       /*
-       * Starts while the lower is still visibly out, and the overlap is
-       * WIDE — five seconds against five, offset by less than a third.
+       * The file comes out, and STOPS — SHUT.
        *
-       * The first pass staggered these by more and the cross vanished: both
-       * curves are smootherstep, which leaves and arrives with zero velocity,
-       * so their tails are almost flat and a gap that looks generous in
-       * keyframe time buys almost no simultaneous MOTION. Measured, the two
-       * drawers were never both moving at once — it played as one drawer
-       * shutting, a pause, and another opening, which is the reading this
-       * slide exists to avoid. They now pass each other around a quarter
-       * open, both travelling.
+       * `open` does two things in sequence: it lifts the file clear of the
+       * drawer and carries it forward, and then swings the cover open until
+       * the inside fills the frame. Only the first half is wanted here. At
+       * 0.4 the cover has visibly started to unfold, which is the beginning
+       * of a project slide, not the end of this one — the file has to stay a
+       * closed object, because the next thing it does is become an icon of
+       * one. A fifth of the way is lifted and carried, and no more.
        */
-      upper: [
+      present: {
+        drawer: 1,
+        file: 0,
+        open: [
+          { at: 0, value: 0 },
+          { at: 4.5, value: 0 },
+          { at: 6, value: 0.28 },
+          { at: 9.8, value: 0.28 },
+        ],
+
+        /* Handed to the page. See MARK_TRAVEL_DELAY — the two are one moment. */
+        until: 10.2,
+      },
+
+      /*
+       * AND THEN IT LEAVES.
+       *
+       * Starts only once the drawer is shut behind the file, so the order the
+       * audience reads is: the file comes out, the cabinet is closed up, the
+       * cabinet goes. Three beats in the order somebody actually does them.
+       *
+       * The corner mark is timed against this — see `MARK_TRAVEL_DELAY` in
+       * `Present.tsx`. The file lands in the corner as the furniture clears
+       * the frame, which is the whole point of the beat: what is left of all
+       * that machinery is one folder on the page.
+       */
+      exit: [
         { at: 0, value: 0 },
-        { at: 2.8, value: 0 },
-        { at: 7.8, value: 1 },
+        { at: 11.8, value: 0 },
+        { at: 14, value: 1 },
+      ],
+
+      /* The same moment `until` retires it. One handover, two tracks. */
+      park: [
+        { at: 0, value: 0 },
+        { at: 10.2, value: 0 },
+        { at: 11.4, value: 1 },
       ],
     },
   },
@@ -1183,6 +1589,17 @@ const deck: readonly Slide[] = [
   {
     id: "data-gap",
 
+    /*
+     * CUT FROM THE RUNNING ORDER, not deleted. See the note on `cog`.
+     *
+     * It was file 0 of the UPPER drawer. With `local-ai` cut too that drawer
+     * is now empty and never opens, so restoring this one means putting
+     * "DATA GAP" back at the head of `PROPOSED` in `acts/cabinetAct.ts` and
+     * giving the deck a slide that opens the upper drawer again — the
+     * handoff slide replaced the one that used to.
+     */
+    hidden: true,
+
     /* File 0 of the upper drawer. Nothing to put away — the drawer has just
      * been opened by the slide before, so this beat starts on its contents
      * shot exactly as `cog` starts on the lower drawer's. */
@@ -1191,7 +1608,7 @@ const deck: readonly Slide[] = [
       file: 0,
       handover: 0,
       duration: TAKE_OUT,
-      background: BACKGROUND,
+      background: [{ at: 0, value: BACKGROUND }],
       camera: UPPER_TAKE_OUT_CAMERA,
       target: UPPER_TAKE_OUT_TARGET,
     },
@@ -1254,6 +1671,14 @@ const deck: readonly Slide[] = [
   {
     id: "local-ai",
 
+    /*
+     * CUT FROM THE RUNNING ORDER, not deleted. See the note on `data-gap`.
+     *
+     * It was file 1 of the upper drawer, so it needs "MODERNIZE" restored to
+     * `PROPOSED` after "DATA GAP" to come back.
+     */
+    hidden: true,
+
     /* File 0 goes back, file 1 comes out. */
     entry: {
       drawer: 1,
@@ -1261,7 +1686,7 @@ const deck: readonly Slide[] = [
       file: 1,
       handover: SWAP_HANDOVER,
       duration: SWAP,
-      background: BACKGROUND,
+      background: [{ at: 0, value: BACKGROUND }],
       camera: UPPER_SWAP_CAMERA,
       target: UPPER_SWAP_TARGET,
     },
@@ -1286,7 +1711,7 @@ const deck: readonly Slide[] = [
     copy: [
       {
         at: 0,
-        value: { title: "Local AI: the data never has to leave the building." },
+        value: { title: "" },
       },
     ],
 
@@ -1329,6 +1754,19 @@ const deck: readonly Slide[] = [
   {
     id: "owned",
 
+    /*
+     * CUT FROM THE RUNNING ORDER, not deleted. See the note on `cog`.
+     *
+     * TO PUT IT BACK: unhide and restore "HOST" to the end of `PROPOSED` in
+     * `acts/cabinetAct.ts`. Nothing downstream needs reindexing — this was the
+     * LAST file in the upper drawer, so removing it left no gap behind it.
+     *
+     * This is also the deck's only slide carrying a drawing, so `BlueprintPanel`
+     * and the `DRAWING_SHARE` split in `Present.tsx` go unused while it is
+     * hidden. Both are left wired up so unhiding is the whole job.
+     */
+    hidden: true,
+
     /* File 1 goes back, file 2 comes out — the last of the proposal. */
     entry: {
       drawer: 1,
@@ -1336,7 +1774,7 @@ const deck: readonly Slide[] = [
       file: 2,
       handover: SWAP_HANDOVER,
       duration: SWAP,
-      background: BACKGROUND,
+      background: [{ at: 0, value: BACKGROUND }],
       camera: UPPER_SWAP_CAMERA,
       target: UPPER_SWAP_TARGET,
     },
@@ -1447,6 +1885,140 @@ const deck: readonly Slide[] = [
    */
   {
     id: "synopsis",
+
+    /*
+     * THE WAY OUT OF THE CABINET.
+     *
+     * The deck's last cabinet beat, and it belongs to this page rather than to
+     * one of its own: as a separate slide it ended on an empty room and made
+     * the audience click through a blank frame to get here. As an entry the
+     * same fourteen seconds play and this page is simply standing there when
+     * they finish.
+     *
+     * Lower drawer shuts, upper opens, the summary file comes out, the file
+     * becomes the corner mark, the drawer shuts behind it and the cabinet
+     * leaves. `until` and `park` are one moment written twice — see the note
+     * on `handoff` in `SlideEntry`.
+     */
+    entry: {
+      /* Ignored under `handoff`, but the type asks for them. */
+      drawer: 1,
+      file: 0,
+      handover: 0,
+
+      /*
+       * TEN, NOT FOURTEEN.
+       *
+       * Every keyframe below was pulled in by three tenths. The beat says four
+       * things in sequence — a folder goes back, one drawer shuts and the other
+       * opens, a file comes out, the cabinet leaves — and at fourteen seconds
+       * each of them had a pause on either side of it. Shortened, they run into
+       * one another, which is what makes it read as one gesture instead of four
+       * moves waiting their turn.
+       */
+      duration: 9.8,
+
+      /* The room, from the first frame. See the note on the swaps above. */
+      background: [{ at: 0, value: BACKGROUND }],
+
+      /*
+       * OPENS NOSE-TO-THE-FOLDER, not on the drawer.
+       *
+       * The slide before this ends with ONBOARD open and filling the frame, so
+       * the beat has to start from that same pose or the cut into it is
+       * visible. It pulls back to the drawer as the folder shuts — which is
+       * the first half of every swap in the deck — and only then climbs.
+       */
+      camera: [
+        { at: 0, value: FILL_EYE },
+        { at: SWAP_HANDOVER, value: DRAWER_EYE },
+        { at: 1.5, value: DRAWER_EYE },
+        { at: 4.4, value: UPPER_DRAWER_EYE },
+        { at: 9.8, value: UPPER_DRAWER_EYE },
+      ],
+
+      target: [
+        { at: 0, value: FILL_AIM },
+        { at: SWAP_HANDOVER, value: DRAWER_AIM },
+        { at: 1.5, value: DRAWER_AIM },
+        { at: 4.4, value: UPPER_DRAWER_AIM },
+        { at: 9.8, value: UPPER_DRAWER_AIM },
+      ],
+
+      handoff: {
+        /*
+         * ONBOARD goes back first. It is file 2 of the lower drawer, which is
+         * what the slide before this one left open and filling the frame.
+         */
+        returnDrawer: 0,
+        returnFile: 2,
+        returnUntil: SWAP_HANDOVER,
+
+        lower: [
+          { at: 0, value: 1 },
+
+          /* Held open until ONBOARD is back inside it. */
+          { at: 1, value: 1 },
+          { at: 3.2, value: 0 },
+        ],
+
+        upper: [
+          { at: 0, value: 0 },
+          { at: 2.2, value: 0 },
+          { at: 4.4, value: 1 },
+          { at: 7.1, value: 1 },
+          { at: 8.3, value: 0 },
+        ],
+
+        presentDrawer: 1,
+        presentFile: 0,
+
+        open: [
+          { at: 0, value: 0 },
+          { at: 4.5, value: 0 },
+          { at: 6, value: 0.28 },
+          { at: 9.8, value: 0.28 },
+        ],
+
+        /*
+         * AFTER the park has taken the file, not before.
+         *
+         * The act releases the file the moment `park` climbs off zero, and a
+         * released file is skipped by the cabinet whatever this says — so this
+         * only has to avoid being EARLIER than that. Set to the same instant
+         * the ramp starts and there is a frame where the file is neither
+         * presented nor taken, and the pose loop drops it back into the
+         * drawer. Set after, and the two windows overlap harmlessly.
+         */
+        until: 8,
+
+        /*
+         * Up and clear. The drawer's half-height is 1.134, so 1.5 puts the
+         * whole card above its top edge rather than half inside it — which is
+         * the difference between a file being taken out of the top drawer and
+         * a file appearing to hang in front of the bottom one.
+         */
+        rise: [
+          { at: 0, value: 1.5 },
+          { at: 9.8, value: 1.5 },
+        ],
+
+        park: [
+          { at: 0, value: 0 },
+          { at: 7.1, value: 0 },
+          { at: 8, value: 1 },
+        ],
+
+        exit: [
+          { at: 0, value: 0 },
+          { at: 8.3, value: 0 },
+          { at: 9.8, value: 1 },
+        ],
+      },
+    },
+
+    /* The file the handoff took out is still in the corner. */
+    fileMark: true,
     duration: 40,
     bare: true,
     copy: [],
@@ -1460,7 +2032,7 @@ const deck: readonly Slide[] = [
 
     act: {
       kind: "synopsis",
-      role: "DevOps Engineer",
+      role: "Then vs. Now",
 
       /*
        * Pre-filled from what the deck actually shows, in running order, so
@@ -1468,46 +2040,381 @@ const deck: readonly Slide[] = [
        * is the only place the wording lives.
        */
       points: [
+        // {
+        //   label: "Mission",
+        //   note: "I want to have an impact, and I want to be able to see it",
+        // },
         {
-          label: "Mission",
-          note: "I want to have an impact, and I want to be able to see it",
+          label: "Data Then",
+          note: 'Daily manual exports and imports were required to keep data "close" to live',
         },
         {
-          label: "Data Sync",
-          note: "Data is now consistently being ingested at a rate of <5 minutes",
+          label: "Onboarding Then",
+          note: "All clients had to be manually tracked for Whose Court and On/Off Track",
         },
         {
-          label: "Helper Services",
-          note: "Several various microservices are now running and constantly available",
+          label: "Infrastructure Then",
+          note: "Google Sheets held all company data",
         },
         {
-          label: "Onboarding",
-          note: "Clients once dormant are now always accurately tracked",
+          label: "Data Now",
+          note: "All data is ingested and uploaded in sub-5 minute intervals, feeding all microservices",
         },
         {
-          label: "Our Own Model",
-          note: "An AI model that stays on site and answers questions tailored to us",
+          label: "Onboarding Now",
+          note: "All clients are automatically tracked and processed automatically, with workflows now organized and optimized",
         },
         {
-          label: "We hold Services",
-          note: "Our own apps, our own data, our own control, our own security",
+          label: "Infrastucture Now",
+          note: "Full tech stack, server maintained, security implemented, consistent testing and monitoring",
         },
       ],
     },
   },
 
   /*
-   * THE MARKET — FIRST SIX
+   * THE ARCHITECTURE
    *
-   * The only page in the deck with something clickable on it. See the note in
-   * `MarketPanel` on why that needed handling: everywhere else a click means
-   * "next slide".
+   * The system as it actually stands, as a drawing. It closes the deck for the
+   * same reason the security page precedes it: both are pages the room reads
+   * and points at rather than watches, and this is the one somebody will ask
+   * questions about.
    *
-   * Duplicate this whole slide for a second six; nothing but the `id` and the
-   * rows has to change.
+   * ------------------------------------------------------------------
+   * TO PUT THE DIAGRAM IN: drop the file in `frontend/public/diagrams/`
+   * and set `src` below to its path without `public` — so a file at
+   * `public/diagrams/architecture.png` is "/diagrams/architecture.png".
+   * SVG is worth exporting if the drawing tool offers it; it stays sharp
+   * at whatever resolution the deck is projected at.
+   * ------------------------------------------------------------------
    */
   {
+    id: "architecture-diagram",
+
+    /* The file the handoff took out is still in the corner. */
+    fileMark: true,
+
+    duration: 60,
+    bare: true,
+    copy: [],
+
+    /* Nothing is rendered in 3D but the corner mark, which is camera-pinned. */
+    camera: [{ at: 0, value: [0, 3, 18] }],
+    target: [{ at: 0, value: [0, 2, 0] }],
+
+    accent: [{ at: 0, value: SAGE }],
+    background: [{ at: 0, value: BACKGROUND }],
+
+    act: {
+      kind: "diagram",
+
+      title: "How it fits together.",
+      lede: "",
+
+      /*
+       * Served from `public/`, so the path has no "public" in it — vite
+       * serves that folder at the site root. `frontend/public/...` is the
+       * path on disk, and the browser 404s on it.
+       */
+      src: "/diagrams/architecture.png",
+
+      alt: "Sources feed ingest services into a Postgres database, which fans out to scheduled jobs and on to Google Sheets and Looker Studio",
+      caption: "",
+    },
+  },
+
+  /*
+   * WHAT YOU CAN'T SEE
+   *
+   * The deck's last page, and the only one about work that has no picture.
+   * Everything before it showed something running; this is the layer under
+   * all of it, which is visible exactly once — the day it does not hold.
+   *
+   * It sits after the Then vs. Now summary on purpose. That page closes the
+   * argument about what changed; this one answers the question a room asks
+   * straight afterwards, which is whether any of it is safe.
+   *
+   * ------------------------------------------------------------------
+   * EDIT THE TABLE HERE. Each entry is one cell: the control, the standard
+   * behind it, what it is, and — under the divider — where it actually lives
+   * in our system. Six is what the layout is built around; three across, two
+   * down. Any field left empty is simply omitted, so a half-filled table
+   * still renders cleanly while you work through it.
+   *
+   * The headers below are PROMPTS, not claims — they name the usual
+   * categories so the shape is legible, and none of them asserts anything
+   * until you fill in the rest of the cell. Replace them with what you
+   * actually built, and delete any that do not apply.
+   * ------------------------------------------------------------------
+   */
+  {
+    id: "dev",
+
+    /* The file the handoff took out is still in the corner. */
+    fileMark: true,
+
+    duration: 60,
+    bare: true,
+    copy: [],
+
+    /* Nothing is rendered in 3D but the corner mark, which is camera-pinned. */
+    camera: [{ at: 0, value: [0, 3, 18] }],
+    target: [{ at: 0, value: [0, 2, 0] }],
+
+    accent: [{ at: 0, value: SAGE }],
+    background: [{ at: 0, value: BACKGROUND }],
+
+    act: {
+      /*
+       * A SHELF, NOT A TABLE. The other two pages in the run are lists of
+       * things that have to be true; this one is a set of things that were
+       * built, and it is drawn as what they are. See `AppsPanel`.
+       */
+      kind: "apps",
+
+      /* Heads the page with the word, this third of it lit. */
+      part: "dev",
+
+      /* Unused while `part` is set — the word is the heading. */
+      title: "",
+
+      lede: "Things I have built end to end, from the idea to the thing people open.",
+
+      /* ----------------------------------------------------------------
+       * EDIT THE TILES HERE. `label` is the name under the shape; `icon`
+       * picks the drawing inside it, from the closed set in `AppsPanel`:
+       * "fit", "referral", "meeting", "pipeline", "ai", or "app" for one
+       * whose drawing is not decided yet.
+       *
+       * Five is what the layout is drawn for — three across, then two
+       * centred — but it wraps, so six lands as two rows of three.
+       * ---------------------------------------------------------------- */
+      apps: [
+        { label: "Atikan Fit", icon: "fit" },
+        { label: "Referral Engine", icon: "referral" },
+        { label: "Meeting Assistant", icon: "meeting" },
+        { label: "Data Pipeline", icon: "pipeline" },
+        { label: "Atikan AI", icon: "ai" },
+      ],
+
+      note: "",
+    },
+  },
+
+  {
+    id: "security",
+
+    /* The file the handoff took out is still in the corner. */
+    fileMark: true,
+    duration: 60,
+    bare: true,
+    copy: [],
+
+    /*
+     * Held, and pointed nowhere in particular. The canvas is empty behind
+     * this page — no act matches `security`, so every root is hidden and the
+     * background is all that renders. The camera still needs a pose because
+     * every slide is sampled the same way.
+     */
+    camera: [{ at: 0, value: [0, 3, 18] }],
+    target: [{ at: 0, value: [0, 2, 0] }],
+
+    /*
+     * GOLD, the deck's second accent. It marks what is unresolved or being
+     * asked for — see `palette.ts` — and certifications still being worked
+     * toward is exactly that.
+     */
+    accent: [{ at: 0, value: GOLD }],
+    background: [{ at: 0, value: BACKGROUND }],
+
+    act: {
+      kind: "security",
+
+      /* The middle third of the run. See `part`. */
+      part: "sec",
+
+      title: "Security Rules",
+      lede: "The compliance that has already been accounted for.",
+
+      measures: [
+        {
+          header: "Regulation S-P",
+          subheader: "17 CFR Part 248 · SEC",
+          description:
+            "The privacy, safeguards, and dispoal rule for financial institutions.",
+          applied: "Passwords encrypted, Two-Factor Authentication,",
+        },
+        {
+          header: "Advisers Act Rule SEC 204-2",
+          subheader: "Books & Records Rule",
+          description:
+            "Required to make and preserve accurate and accessible records.",
+          applied:
+            "Actions logged, CRM entries to users, raw data never overwritten, data-quality reports, ownership registry",
+        },
+        {
+          header: "Advisers Act Rule 206(4)-7",
+          subheader: "Compliance Rule",
+          description:
+            "Requires written compliance policies and procedures to prevent violations",
+          applied:
+            "Complete change history log, structural tests, 650+ automated functional tests, code-quality gate",
+        },
+        {
+          header: "SEC Regulation S-ID",
+          subheader: "Identity Theft Red Flags",
+          description:
+            "Requires a program to detect, prevent, and mitigate identity theft in covered accounts, including detecting patterns that indicate hacking attempts",
+          applied: "Account lockouts, IP Monitoring",
+        },
+        {
+          header: "SOC 2",
+          subheader: "Framework",
+          description: "An audit standard organized around trust criteria.",
+          applied: "SSH by public key only",
+        },
+        {
+          header: "SEC and FINRA recordkeeping",
+          subheader: "Rule 204-2 · FINRA 4511 / 3110",
+          description:
+            "Business communications must be captured and retained in reviewable form.",
+          applied:
+            "User-API keys held secure, manage who posts by who took an action",
+        },
+        {
+          header: "CCPA / CPRA",
+          subheader: "California",
+          description: "California's privacy statutes.",
+          applied:
+            "Documented inventory of sensitive data held, no biometric data held",
+        },
+        {
+          header: "Gramm-Leach-Bliley Act",
+          subheader: "Safeguards",
+          description:
+            "Financial institutions are required to protect the security and confidentiality of customer inforamtion.",
+          applied: "",
+        },
+        {
+          header: "Ohio Data Protection Act",
+          subheader: "Ohio Rev. Code 1354 · SB 220",
+          description:
+            "A legal defence to data-breach claims for organisations that implement a recognised cybersecurity framework and maintain it.",
+          applied: "",
+        },
+        {
+          header: "State Breach Notification",
+          subheader: "CA Civil Code 1798.82 · Ohio 1349.19",
+          description:
+            "Both states require notifying affected residents after a breach of personal information.",
+          applied: "",
+        },
+      ],
+
+      /*
+       * The footnote. The words "Working toward" are already set in the
+       * accent by the panel, so start this string with the certifications
+       * themselves — "CompTIA Security+, and AWS Certified Security..." —
+       * rather than repeating the lead-in. Leave it empty to drop the
+       * footnote and its rule entirely.
+       */
+      note: "CompTIA Security+ and AWS Certified Security – Specialty, both targeted for this year.",
+    },
+  },
+
+  {
+    id: "ops",
+
+    /* The file the handoff took out is still in the corner. */
+    fileMark: true,
+
+    duration: 60,
+    bare: true,
+    copy: [],
+
+    /* Nothing is rendered in 3D but the corner mark, which is camera-pinned. */
+    camera: [{ at: 0, value: [0, 3, 18] }],
+    target: [{ at: 0, value: [0, 2, 0] }],
+
+    /*
+     * GOLD, like the security page. It is the deck's mark for what is being
+     * ASKED FOR rather than reported — see `palette.ts` — and this page is the
+     * only one in the deck that asks for something outright.
+     */
+    accent: [{ at: 0, value: GOLD }],
+    background: [{ at: 0, value: BACKGROUND }],
+
+    act: {
+      /*
+       * A CLAIM AND AN ARC, not a table. This is the page that says the job is
+       * bigger than the code, so it is the one page in the deck that argues in
+       * the first person. See `OpsPanel`.
+       */
+      kind: "ops",
+
+      /* Heads the page with the word, this third of it lit. */
+      part: "ops",
+
+      /* Unused while `part` is set — the word is the heading. */
+      title: "",
+
+      /* ----------------------------------------------------------------
+       * EDIT THIS PAGE HERE. Everything below is the wording, and all of
+       * it is a first draft written from the brief — say it the way you
+       * would say it in the room.
+       *
+       * `claim` is the pitch, set large down the left. `support` backs it
+       * up in a sentence or two. `areas` is the rail: the label is the
+       * area, the note is what is actually DONE in it — that is the half
+       * that turns an offer into a job description. `note` is the closing
+       * line, under a rule at the foot.
+       *
+       * The rail is not numbered, on purpose. These run at the same time;
+       * numbering them would say they happen in an order. See `OpsPanel`.
+       * ---------------------------------------------------------------- */
+      lede: "The half of the job that never ships as code.",
+
+      claim: "I want the work around the systems, not just the systems.",
+
+      support:
+        "Someone has to answer the phone, chase the paperwork, run the seminar and call the client back. I would rather be that person than hand the process to somebody else once I have built it.",
+
+      areas: [
+        {
+          label: "Client support",
+          note: "Own the queue: every request logged with an owner and a due date, so nothing sits waiting for somebody to notice it. I will build that system and then work it.",
+        },
+        {
+          label: "On the phone",
+          note: "Scheduling, review reminders, missing paperwork, event RSVPs, checking in after a meeting. I will make the calls, and every one of them lands back on the client record.",
+        },
+        {
+          label: "The day-to-day",
+          note: "The call list, the calendar, the follow-ups, account and vendor admin — the recurring work that decides whether a week runs smoothly or gets rescued on Friday.",
+        },
+        {
+          label: "Client events and seminars",
+          note: "Plan it, fill the room from the CRM rather than from memory, run the day, and get every attendee back into the system the same week with a next action.",
+        },
+        {
+          label: "Whatever is not getting done",
+          note: "The unglamorous half of an operation is usually the part nobody owns. I am happy to be the person who owns it, and to write down how it works so it survives me.",
+        },
+      ],
+
+      note: "This is sales and service work, and I want it — with the systems already built to make it repeatable.",
+    },
+  },
+
+  {
     id: "market",
+
+    /*
+     * CUT FROM THE RUNNING ORDER, not deleted — the rows below are real and
+     * worth keeping. Unhide to bring the job comparison back.
+     */
+    hidden: true,
+
     duration: 60,
     bare: true,
     copy: [],
@@ -1569,6 +2476,10 @@ const deck: readonly Slide[] = [
    */
   {
     id: "market-2",
+
+    /* CUT FROM THE RUNNING ORDER, and empty besides. See the note on `market`. */
+    hidden: true,
+
     duration: 60,
     bare: true,
     copy: [],

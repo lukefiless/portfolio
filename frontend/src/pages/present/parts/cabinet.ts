@@ -62,8 +62,14 @@ const DRAWER_GAP = HEIGHT * 0.04;
 export const DRAWER_PITCH = DRAWER_H + DRAWER_GAP;
 
 /** File card size, and how far the tab stands above the card. */
-const FILE_W = WIDTH * 0.78;
-const FILE_H = DRAWER_H * 0.82;
+/*
+ * EXPORTED, because `cabinetAct` draws the parked file's shadow and a shadow
+ * has to be the size of the thing casting it. Two copies of these numbers
+ * drift the first time a folder is resized, and the failure is a shadow that
+ * no longer fits under its own card.
+ */
+export const FILE_W = WIDTH * 0.78;
+export const FILE_H = DRAWER_H * 0.82;
 const TAB_H = 0.34;
 
 export interface CabinetFile {
@@ -106,7 +112,69 @@ export interface Cabinet {
    * ground is the same manila, and a cut between two frames that are both
    * nothing but folder is a cut nobody sees.
    */
-  setPresented: (drawer: number, index: number, amount: number) => void;
+  setPresented: (
+    drawer: number,
+    index: number,
+    amount: number,
+
+    /**
+     * Extra height, on top of whatever `amount` gives. Drawer-local units.
+     *
+     * A presented file does not actually rise out of its drawer: `STAGE_Y` is
+     * 0.45 against a drawer half-height of 1.134, so the beat takes the file
+     * FORWARD rather than up, and the open cover fills the frame before
+     * anybody notices. The handoff is the deck's only beat that stops at the
+     * staging pose and holds there — and held, a file that has come forward
+     * toward a camera looking down projects LOW, landing over the drawer
+     * below it. This lifts it clear so it reads as coming out of the drawer
+     * it is actually in.
+     */
+    rise?: number
+  ) => void;
+
+  /**
+   * Slide the whole cabinet clear of the frame. 0 is where it stands, 1 is
+   * gone. `direction` is how far and which way, in the act's own units.
+   */
+  setExit: (amount: number, direction: THREE.Vector3) => void;
+
+  /**
+   * Hand a file over to the caller for good.
+   *
+   * The returned group is no longer posed by `setPresented` — it has left the
+   * cabinet, and whoever took it owns where it goes. Used by the handoff,
+   * which takes one file out and keeps it on screen as the deck's corner mark
+   * long after the cabinet itself has gone.
+   *
+   * Returns null if there is no such file. Idempotent.
+   */
+  release: (
+    drawer: number,
+    index: number,
+    into: THREE.Object3D
+  ) => THREE.Object3D | null;
+
+  /**
+   * Put a released file back where it came from.
+   *
+   * Back into its DRAWER, which is the only correct answer and the reason the
+   * cabinet does this rather than the caller: a file is a child of the drawer
+   * that holds it, so a caller handing it back to the cabinet's root leaves it
+   * orphaned at the carcass origin — still rendered, still posed, and no
+   * longer inside the drawer that is supposed to contain it. That is exactly
+   * what happened, and the symptom was a drawer that opened empty ever after.
+   */
+  restore: (drawer: number, index: number) => THREE.Object3D | null;
+
+  /**
+   * Look at a file without taking it or changing whose it is.
+   *
+   * For a caller that needs to know where a file currently IS — the handoff
+   * watches the presented one every frame so that when it takes it, it can
+   * carry it away from exactly where the cabinet left it rather than from
+   * wherever the maths says it should have been.
+   */
+  fileGroup: (drawer: number, index: number) => THREE.Object3D | null;
 
   setAccent: (color: THREE.Color) => void;
   dispose: () => void;
@@ -349,6 +417,29 @@ export function createCabinet(options: CabinetOptions): Cabinet {
   );
 
   /*
+   * DEEPER PAPER, FOR THE ONE FILE THAT LEAVES THE CABINET.
+   *
+   * In the drawer a folder is seen against dark steel and manila is exactly
+   * right. Parked in the corner of a flat page it is seen against the deck's
+   * ground, which is a warm off-white — and manila on off-white is two shades
+   * of the same pale thing. The mark was there and nobody could find it.
+   *
+   * So the file that becomes the mark is repapered on its way out: the same
+   * hue, taken down far enough to hold an edge against the page. It goes back
+   * to ordinary manila if it is ever put away again, because in a drawer this
+   * colour would read as a different, older file.
+   */
+  const MARK_COLOR = 0xb08d51;
+
+  const markMaterial = keepM(
+    new THREE.MeshStandardMaterial({
+      color: MARK_COLOR,
+      roughness: 0.88,
+      metalness: 0.02,
+    })
+  );
+
+  /*
    * The tab. Same manila as the card, and the same roughness — the emissive
    * is what marks the live file, not a different paper.
    *
@@ -395,9 +486,32 @@ export function createCabinet(options: CabinetOptions): Cabinet {
     /** This file's own tab, so lighting one does not light all of them. */
     tabMaterial: THREE.MeshStandardMaterial;
 
+    /**
+     * The handwriting on the tab.
+     *
+     * Held so it can be hidden when the file leaves the cabinet: the label is
+     * a canvas texture sized to be read across a room, and shrunk to the size
+     * of a corner mark it stops being writing and becomes a grey smear on the
+     * tab. A blank tab at that size reads better than illegible ink on one.
+     *
+     * NULL on a file whose `label` is empty — see the build below. Such a file
+     * has a tab and no writing on it, which is how the summary file in the top
+     * drawer is meant to read.
+     */
+    labelMesh: THREE.Object3D | null;
+
     /** Where it sits when it is just a file in a drawer. */
     restY: number;
     restZ: number;
+
+    /**
+     * The drawer group this file belongs to.
+     *
+     * Recorded at build time so a borrowed file can always be put back in the
+     * right place — see `restore`. The scene graph cannot answer this once the
+     * file has been handed to somebody else.
+     */
+    home: THREE.Object3D;
   }
 
   interface DrawerParts {
@@ -604,9 +718,14 @@ export function createCabinet(options: CabinetOptions): Cabinet {
        * the camera came round to the front. Spreading by POSITION IN THE
        * DRAWER instead means no two tabs can ever share a lane, whatever the
        * drawer holds.
+       *
+       * A drawer holding ONE file puts its tab hard left rather than centred.
+       * That file is the deck's corner mark, and a folder reads as a folder at
+       * icon size precisely because the tab breaks its top-left corner — dead
+       * centre it just looks like a bump.
        */
       const lane =
-        contents.length > 1 ? (index / (contents.length - 1)) * 2 - 1 : 0;
+        contents.length > 1 ? (index / (contents.length - 1)) * 2 - 1 : -1;
 
       /*
        * ABOVE the card's top edge, not on its face. A tab is the bit that
@@ -633,24 +752,41 @@ export function createCabinet(options: CabinetOptions): Cabinet {
        * what every other label in this deck is — it held full brightness
        * while the tab under it fell into shadow, and read as a glowing
        * sticker rather than as ink.
+       *
+       * AND NO WRITING MEANS NO PLATE.
+       *
+       * An empty string used to go through `createLabel` like any other, and
+       * the result was not an invisible label — it was a manila-backed
+       * rectangle standing up out of the tab. The plate is sized from the
+       * canvas the text was drawn on, and a canvas with nothing on it is just
+       * the padding: 57 pixels wide by the 144 the line box always is. That
+       * aspect, held to the label's width, makes the plate two and a half
+       * times TALLER than it is wide, and it is opaque because a tab label is
+       * painted with the folder's own colour rather than floated in front of
+       * it. Hence the odd vertical box over the top drawer's file.
+       *
+       * The tab itself stays. It is the tab, not the writing, that makes a
+       * piece of card read as a file — see the labels in `cabinetAct.ts`.
        */
-      const label = createLabel(entry.label, {
-        /*
-         * Narrower than the tab it sits on. The label is a plain rectangle,
-         * so at the tab's full width its square corners would poke out past
-         * the rounded ones underneath.
-         */
-        width: FILE_W * 0.21,
-        color: TEXT,
-        tracking: 0.02,
-        weight: 600,
+      const label = entry.label
+        ? createLabel(entry.label, {
+            /*
+             * Narrower than the tab it sits on. The label is a plain
+             * rectangle, so at the tab's full width its square corners would
+             * poke out past the rounded ones underneath.
+             */
+            width: FILE_W * 0.21,
+            color: TEXT,
+            tracking: 0.02,
+            weight: 600,
 
-        /* Handwritten. See the note at the top of the file on why. */
-        font: "Caveat",
+            /* Handwritten. See the note at the top of the file on why. */
+            font: "Caveat",
 
-        background: `#${FILE_COLOR.toString(16).padStart(6, "0")}`,
-        lit: true,
-      });
+            background: `#${FILE_COLOR.toString(16).padStart(6, "0")}`,
+            lit: true,
+          })
+        : null;
 
       /*
        * FLUSH with the tab face, not floating in front of it.
@@ -663,17 +799,19 @@ export function createCabinet(options: CabinetOptions): Cabinet {
        */
       const faceOut = 0.026;
 
-      label.mesh.position.set(
-        lane * FILE_W * 0.35,
-        tabY + Math.sin(0.3) * faceOut,
-        Math.cos(0.3) * faceOut
-      );
+      if (label) {
+        label.mesh.position.set(
+          lane * FILE_W * 0.35,
+          tabY + Math.sin(0.3) * faceOut,
+          Math.cos(0.3) * faceOut
+        );
 
-      label.mesh.rotation.x = -0.3;
+        label.mesh.rotation.x = -0.3;
 
-      /* On the spine with the tab it is written on, for the same reason. */
-      spine.add(label.mesh);
-      labels.push(label);
+        /* On the spine with the tab it is written on, for the same reason. */
+        spine.add(label.mesh);
+        labels.push(label);
+      }
 
       files.push({
         group: file,
@@ -681,6 +819,8 @@ export function createCabinet(options: CabinetOptions): Cabinet {
         spine,
         roll,
         tabMaterial,
+        labelMesh: label?.mesh ?? null,
+        home: group,
         restY: file.position.y,
         restZ: file.position.z,
       });
@@ -797,7 +937,115 @@ export function createCabinet(options: CabinetOptions): Cabinet {
    * the entry camera in `slides.ts` is derived from the pose at 1, and
    * running the beat backwards to put a file away lands on the pose at 0.
    */
-  const setPresented = (drawer: number, index: number, amount: number) => {
+  /*
+   * Files that have left the cabinet, keyed "drawer:index".
+   *
+   * A released file is skipped by `setPresented` entirely — not posed, not
+   * reset. Without that, the pose loop would keep writing the file's position
+   * every frame and fight whoever is now holding it, which shows up as the
+   * corner mark twitching back toward the drawer it came out of.
+   */
+  const released = new Set<string>();
+
+  const fileAt = (drawer: number, index: number) =>
+    drawers[drawer]?.files[index] ?? null;
+
+  /**
+   * Swap the paper a file is made of, leaves and tab together.
+   *
+   * By TRAVERSAL rather than by held references, because the two leaves are
+   * built inside the drawer loop and never escape it — and the alternative,
+   * carrying both meshes on `FileParts`, is two more fields that exist for
+   * one line of code. The tab is a material of its own per file (it carries
+   * the live-file glow), so it takes the colour rather than the material.
+   *
+   * Only the two PAPERS are swapped, matched by identity. Anything else on a
+   * file — the tab, and the handwriting, which is a canvas texture — has its
+   * own material, and a traversal that repainted everything it found would
+   * turn the label into a blank manila rectangle the first time a file was
+   * put back.
+   */
+  const repaper = (
+    file: FileParts,
+    paper: THREE.MeshStandardMaterial,
+    tabColor: number
+  ) => {
+    file.group.traverse(node => {
+      const mesh = node as THREE.Mesh;
+
+      if (
+        mesh.isMesh &&
+        (mesh.material === fileMaterial || mesh.material === markMaterial)
+      ) {
+        mesh.material = paper;
+      }
+    });
+
+    file.tabMaterial.color.setHex(tabColor);
+  };
+
+  const release = (drawer: number, index: number, into: THREE.Object3D) => {
+    const file = fileAt(drawer, index);
+
+    if (!file) {
+      return null;
+    }
+
+    released.add(`${drawer}:${index}`);
+
+    /* See `markMaterial`: manila is invisible against the page's ground. */
+    repaper(file, markMaterial, MARK_COLOR);
+
+    /* See `labelMesh`: unreadable at mark size, so it comes off. */
+    if (file.labelMesh) {
+      file.labelMesh.visible = false;
+    }
+
+    into.add(file.group);
+    file.group.position.set(0, 0, 0);
+    file.group.rotation.set(0, 0, 0);
+    file.group.scale.setScalar(1);
+
+    return file.group;
+  };
+
+  const restore = (drawer: number, index: number) => {
+    const file = fileAt(drawer, index);
+
+    if (!file) {
+      return null;
+    }
+
+    released.delete(`${drawer}:${index}`);
+
+    /* Ordinary manila again. See `markMaterial`. */
+    repaper(file, fileMaterial, FILE_COLOR);
+
+    if (file.labelMesh) {
+      file.labelMesh.visible = true;
+    }
+
+    /*
+     * Home is the drawer it was built into, recorded at build time rather than
+     * inferred — by the time this runs the file's parent is whoever borrowed
+     * it, so asking the scene graph would just hand it back to the borrower.
+     */
+    file.home.add(file.group);
+
+    /* `setPresented` poses it from here on; this only undoes the borrowing. */
+    file.group.position.set(0, file.restY, file.restZ);
+    file.group.rotation.set(0, 0, 0);
+    file.group.scale.setScalar(1);
+
+    return file.group;
+  };
+
+  const setPresented = (
+    drawer: number,
+    index: number,
+    amount: number,
+    rise = 0
+  ) => {
     const a = clamp01(amount);
 
     const lift = smootherstep(clamp01(a / 0.28));
@@ -808,6 +1056,11 @@ export function createCabinet(options: CabinetOptions): Cabinet {
 
     drawers.forEach((parts, d) => {
       parts.files.forEach((file, i) => {
+        /* Gone from the cabinet. Whoever took it owns its transform now. */
+        if (released.has(`${d}:${i}`)) {
+          return;
+        }
+
         if (d !== drawer || i !== index) {
           file.group.position.set(0, file.restY, file.restZ);
           file.group.rotation.set(0, 0, 0);
@@ -836,13 +1089,37 @@ export function createCabinet(options: CabinetOptions): Cabinet {
             OUT_Y,
             push
           ) +
-          FILE_H * 0.9 * lift * (1 - lift) * (1 - push);
+          FILE_H * 0.9 * lift * (1 - lift) * (1 - push) +
+          /*
+           * Scaled by `lift` so it arrives with the file rather than being a
+           * constant offset — a file still filed must sit exactly where the
+           * others do, or the drawer reads as having one card standing proud
+           * of the rest. See `rise` on the interface.
+           */
+          rise * lift;
 
-        file.group.position.z = THREE.MathUtils.lerp(
-          THREE.MathUtils.lerp(file.restZ, STAGE_Z, lift),
-          OUT_Z,
-          push
-        );
+        /*
+         * THE FILE HOLDS ITS PLACE WHEN THE DRAWER MOVES UNDER IT.
+         *
+         * Every file is a child of its drawer, so a drawer sliding shut drags
+         * whatever it holds along with it — right for the files still filed,
+         * wrong for the one that has just been taken out. Without this the
+         * handoff's shut-the-drawer beat pulled the presented folder back into
+         * the carcass and left it embedded in a closed cabinet.
+         *
+         * MEASURED AGAINST THE OPEN DRAWER, not against zero. Every staging
+         * pose in this file was authored with the drawer already out, so an
+         * open drawer must correct by nothing — subtracting the drawer's
+         * absolute travel instead put every ordinary file beat a full drawer's
+         * depth back inside the cabinet, which is exactly what it did.
+         */
+        file.group.position.z =
+          THREE.MathUtils.lerp(
+            THREE.MathUtils.lerp(file.restZ, STAGE_Z, lift),
+            OUT_Z,
+            push
+          ) +
+          (TRAVEL - parts.group.position.z) * lift;
 
         file.group.scale.setScalar(scale);
 
@@ -917,10 +1194,36 @@ export function createCabinet(options: CabinetOptions): Cabinet {
   setDrawers(0, 0);
   setPresented(-1, -1, 0);
 
+  /*
+   * Reused by `setExit`, which runs every frame. Rule 1 in `acts/act.ts`.
+   */
+  const exitTravel = new THREE.Vector3();
+
+  /**
+   * Slide the whole cabinet out of shot.
+   *
+   * 0 leaves it where it has stood for the entire deck; 1 has it clear of the
+   * frame. The presented file goes WITH it, because it is a child of a drawer
+   * — which is the honest thing for it to do here, since the beat this exists
+   * for hands the file over to a flat mark on the page at the same moment.
+   *
+   * Applied to the cabinet's own root rather than the act's, so the act keeps
+   * owning where the cabinet stands and this only ever offsets it from there.
+   */
+  const setExit = (amount: number, direction: THREE.Vector3) => {
+    exitTravel.copy(direction).multiplyScalar(smootherstep(clamp01(amount)));
+    root.position.copy(exitTravel);
+  };
+
   return {
     root,
     setDrawers,
     setPresented,
+    setExit,
+    release,
+    restore,
+    fileGroup: (drawer: number, index: number) =>
+      fileAt(drawer, index)?.group ?? null,
 
     /**
      * THE ACCENT MARKS A FILE, NOT THE FURNITURE.

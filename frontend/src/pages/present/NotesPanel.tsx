@@ -1,713 +1,200 @@
 /**
- * THE OPEN FOLDER
+ * THE OPENED FILE'S LEFT PAGE
  *
- * On a slide that carries `notes`, the deck is not showing you a scene with a
- * caption beside it — it is showing you a FILE, pulled out of the drawer and
- * lying open. The whole frame is manila. A sheet of lined paper is clipped to
- * the left leaf, and the act plays on the right leaf, drawn onto the folder
- * rather than lit inside a box of its own.
+ * A heading and a short column of lines, set on the slide's own ground, with
+ * the act playing on the right half of the frame.
  *
- * WHERE THE MANILA ACTUALLY COMES FROM
+ * WHAT THIS USED TO BE, AND WHY IT IS NOT
  *
- * Not from here. The background of an opened-file slide is a normal
- * `background` keyframe in `slides.ts` set to `FOLDER`, which is the same
- * constant the folders in the cabinet drawer are made of. That matters: this
- * panel used to paint its own manila over the left half, and "near enough"
- * — two tans, one written in CSS and one lit by three.js — never matched.
- * Now there is one colour and the canvas paints all of it, so the seam
- * between the two technologies is invisible because there is nothing to
- * match.
+ * A sheet of ruled paper under a drawn steel paperclip, on a manila leaf with
+ * a fold down the middle — seven hundred lines of it. It was a good illusion
+ * and it cost more than it returned: the sheet capped how much could be said
+ * before the text ran off the bottom of it, the clip and the fold drew the eye
+ * to furniture rather than to the words, and the handwriting face it was set
+ * in is the wrong voice for a room being asked to take the contents seriously.
  *
- * WHAT IS LEFT FOR THIS FILE TO DRAW
+ * So the paper is gone and the words are simply on the page. The ground is
+ * still the folder's manila, which is doing the one job the illusion actually
+ * needed to do: the file beat before this ends on a frame of nothing but
+ * manila, and this page opens on the same colour, so the cut between them is
+ * invisible.
  *
- * Only the things a canvas is bad at and paper is made of: the fold down the
- * middle, the ruled sheet, the clip, and the handwriting. Plus two blend
- * layers that pull the act into the same material as the paper — see
- * TREATMENT below — and the leaf that swings shut between files.
+ * THE TYPE IS THE DECK'S OWN
  *
- * WRITING ON IT
+ * No family is set here at all, which is the point — it inherits the sans the
+ * rest of the deck is set in, so the notes on a project page and the headline
+ * on a summary page are the same voice. The handwriting is still used, once,
+ * on the cabinet's file tabs, where it means something: a person filed that.
  *
- * The words are DATA, in `slides.ts`. Grep that file for "EDIT THE NOTES
- * HERE". Nothing about the wording lives in this file.
+ * The content is DATA, in `slides.ts`. Edit it there; grep for
+ * "EDIT THE NOTES HERE".
  */
 
-import { useEffect, useState } from "react";
-
-import { FOLDER, TEXT } from "./palette";
+import { TEXT } from "./palette";
 
 interface Props {
   visible: boolean;
 
-  /** One entry per bullet. An empty string leaves a blank ruled line. */
-  notes: readonly string[];
-
-  /** Written at the head of the sheet. */
-  heading?: string;
-
-  /** The slide's accent, for the margin rule and the bullet marks. */
-  accent: string;
-
   /**
-   * Leave immediately rather than wiping out.
+   * Skip the entrance and appear at once.
    *
-   * Set when the slide being moved to opens its file in three dimensions.
-   * The canvas is then already showing a folder shutting over the frame, and
-   * a sheet of paper wiping away on top of that is one folder too many.
+   * For a page whose slide opens with a file beat: there is already a folder
+   * closing over the frame, so a page that politely faded in on top of it
+   * would be animating against a cut it cannot win.
    */
-  snap?: boolean;
-}
+  snap: boolean;
 
-/* -------------------------------------------------------------- the sheet */
-
-/**
- * US Letter. The sheet is sized from this rather than from a width, so it is
- * recognisably a page — a rectangle at some invented ratio reads as a panel,
- * and 8.5 by 11 reads as something torn off a pad.
- */
-export const PAGE_ASPECT = 8.5 / 11;
-
-/**
- * How much of the frame's height the sheet takes, and its ceiling in px.
- *
- * The ceiling is not decoration: past it the sheet stops growing and the act
- * beside it keeps its room on a very large display. Both numbers are bounded
- * by the LEFT LEAF, not by the frame — the sheet is centred in the half, and
- * at 0.92 a 14-inch laptop leaves about twenty pixels between the paper's
- * corner and the fold. That is the tightest common case and it is why this is
- * not higher; the failure it guards against is the sheet crossing the fold,
- * where the illusion that there are two leaves dies immediately.
- */
-export const PAGE_HEIGHT_VH = 0.92;
-export const PAGE_HEIGHT_MAX = 1150;
-
-/**
- * Where the sheet's right edge falls, as a fraction of frame width.
- *
- * Exported because `Present.tsx` frames the act against it: the act has to
- * fit in what the paper leaves, and the paper's width follows the window.
- * Written as one function rather than as a constant guessed at 16:9 — a
- * hard-coded 0.44 is correct on a projector and wrong on every laptop, and
- * the failure is the act creeping back under the sheet, which is exactly the
- * thing this is meant to prevent.
- */
-export const paperEdge = (width: number, height: number): number => {
-  const pageHeight = Math.min(PAGE_HEIGHT_VH * height, PAGE_HEIGHT_MAX);
-  const pageWidth = pageHeight * PAGE_ASPECT;
-
-  /* The sheet is centred in the left leaf, which is the left half. */
-  return (width * 0.25 + pageWidth / 2) / Math.max(width, 1);
-};
-
-const PAGE_HEIGHT = `min(${PAGE_HEIGHT_VH * 100}vh, ${PAGE_HEIGHT_MAX}px)`;
-
-/**
- * The ruling, in `em` of the sheet's own font size.
- *
- * `em` rather than `ch` or `px`, and set ON the sheet, so one number drives
- * both the painted lines and the text's line-height. They were separate
- * before, which meant the writing sat on the rules at one window size and
- * floated between them at every other.
- */
-const RULE = "2.15em";
-
-/** Top padding. The ruling starts here, so the first line has a rule under it. */
-const PAGE_PAD_TOP = "clamp(56px, 8.6vh, 108px)";
-
-/** Left padding, outside the margin rule. */
-const PAGE_PAD_LEFT = "clamp(52px, 6vw, 96px)";
-
-/* ------------------------------------------------------------- the close */
-
-/**
- * How long the leaf takes to swing shut, and to swing back open.
- *
- * Shut is quicker than open on purpose. Closing is a dismissal and wants to
- * feel decided; opening is a reveal and wants the beat that lets the room
- * look at what is on the page.
- */
-const CLOSE_MS = 300;
-const OPEN_MS = 460;
-
-/* ---------------------------------------------------------- the treatment */
-
-/**
- * Paper tooth, as a static image rather than a live filter.
- *
- * `feTurbulence` inside a data URI is rasterised once by the browser and then
- * treated as an ordinary background image. A `filter:` doing the same thing
- * would re-run over the whole frame every animated frame, which is not a
- * price worth paying for grain.
- */
-const GRAIN =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' " +
-  "width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence " +
-  "type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E" +
-  "%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E\")";
-
-/* ------------------------------------------------------------------ the clip
- *
- * WHY THE CLIP IS DRAWN TWICE.
- *
- * A clip drawn entirely on top of the sheet is a picture of a clip. What says
- * "this wire is holding this paper" is the paper passing BETWEEN the two runs
- * of it — so the whole wire is drawn once BEFORE the sheet and the outer run
- * again AFTER it, and the sheet's own top edge is what hides the crossing.
- *
- * Above that edge there is no paper to hide anything, so the entire clip shows
- * against the manila. Below it only the outer run survives, and the inner arm
- * simply stops at the paper's edge — which is what it does in life, because it
- * has gone round the back.
- *
- * The clip also hangs well off the top of the sheet on purpose. A clip sitting
- * wholly within the page is jewellery; one straddling the edge is the only
- * thing in the frame that touches both the paper and the folder, and so the
- * only thing that says the paper is attached to it.
- */
-
-/** The whole wire. Drawn behind the sheet, so only what clears it shows. */
-const CLIP_BEHIND = "M18 120 V38 a12 12 0 0 1 24 0 v88 a19 19 0 0 1 -38 0 V50";
-
-/**
- * The outer run, drawn in front. Deliberately the SAME coordinates as the
- * pass behind rather than a trimmed copy, so where both are visible they
- * overlap exactly and there is no seam at the hand-over.
- */
-const CLIP_IN_FRONT = "M4 50 V126 a19 19 0 0 0 38 0 V50";
-
-/**
- * Steel, and why it is written here rather than in `palette.ts`.
- *
- * The palette holds the deck's four ARGUMENT colours — two accents, the
- * ground and the text — and a paperclip is not making an argument. It is the
- * same call already made for the cream of the paper and the blue of its
- * ruling: colours that belong to a material live with the material.
- *
- * THREE PASSES, WHICH IS WHAT MAKES IT METAL.
- *
- * Wire is a cylinder, and a cylinder lit from one side goes dark at the edge,
- * mid across the body and bright along one line. Stroking the same path three
- * times at falling widths gets that for nothing: the widest pass survives only
- * as a rim, the middle one is the body, and the narrow one is the sheen down
- * the centre. One flat stroke is a drawn line no matter what colour it is.
- *
- * Silver has an easier job here than the brass it replaces. Brass on manila is
- * two warm tans a few shades apart and it went quiet the moment it left the
- * white paper; steel is cool against a warm ground, so it holds on both.
- */
-const CLIP_STEEL = "#8E959E";
-const CLIP_SHEEN = "#F2F5F8";
-
-const CLIP_STROKES = [
-  { key: "rim", stroke: TEXT, width: 8, opacity: 0.4 },
-  { key: "body", stroke: CLIP_STEEL, width: 5.5, opacity: 1 },
-  { key: "sheen", stroke: CLIP_SHEEN, width: 2, opacity: 0.85 },
-];
-
-/**
- * Where the clip sits on the sheet, shared by both passes so they register.
- *
- * SIZED FROM LIFE. A gem clip is about an inch and a third on an eleven inch
- * page, so it is an eighth of the sheet's height and not much more. The first
- * pass at this had it at a third, which is a clip the size of a fist — and a
- * prop that big cannot help but land on the writing, which is exactly what it
- * did. Shrinking it to life is what cleared the text; nothing had to move out
- * of its way.
- *
- * At this size it also clears the margin rule, so the whole of the writing
- * area is left alone at every window size the sheet is sized for.
- *
- * Inset from the left rather than hanging over it. The sheet runs close to the
- * fold on a narrow laptop, and a clip overhanging the left as well would be the
- * first thing to fall off the leaf. It hangs off the TOP instead, which is the
- * edge that has the whole manila leaf behind it.
- */
-const CLIP_BOX = {
-  position: "absolute",
-  top: "-6%",
-  left: "1.5%",
-  height: "14%",
-  overflow: "visible",
-  transform: "rotate(-9deg)",
-} as const;
-
-/** One pass of the wire. */
-function ClipWire({ d, shadow }: { d: string; shadow: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 60 150"
-      style={{ ...CLIP_BOX, filter: shadow }}
-    >
-      {CLIP_STROKES.map(pass => (
-        <path
-          key={pass.key}
-          d={d}
-          fill="none"
-          stroke={pass.stroke}
-          strokeWidth={pass.width}
-          strokeOpacity={pass.opacity}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
-    </svg>
-  );
-}
-
-/** What is written on the sheet currently on screen. */
-interface Sheet {
+  /** The lines themselves. One string per line; an empty one leaves a gap. */
   notes: readonly string[];
-  heading?: string;
-}
 
-/** Two sheets are the same sheet if the same words are on them. */
-const identity = (sheet: Sheet | null): string =>
-  sheet ? [sheet.heading ?? "", ...sheet.notes].join(" ") : "";
+  /** Written at the head of the page. */
+  heading?: string;
+
+  /** The slide's accent, so the page belongs to the deck it is in. */
+  accent: string;
+}
 
 export default function NotesPanel({
   visible,
+  snap,
   notes,
   heading,
   accent,
-  snap,
 }: Props) {
-  const wanted: Sheet | null =
-    visible && notes.length > 0 ? { notes, heading } : null;
-
-  /*
-   * WHY THIS COMPONENT HOLDS STATE AT ALL
-   *
-   * Everything else in the deck is a pure function of the slide, and this
-   * very nearly is too. But a file has to be seen CLOSING, and by the time
-   * React knows the slide changed the old file is already gone from the
-   * props. So the sheet on screen lags the sheet the deck is asking for by
-   * exactly one close.
-   */
-  const [shown, setShown] = useState<Sheet | null>(wanted);
-  const [phase, setPhase] = useState<"open" | "opening" | "closing">(
-    wanted ? "opening" : "open"
-  );
-
-  const want = identity(wanted);
-  const have = identity(shown);
-
-  useEffect(() => {
-    if (want === have) {
-      return;
-    }
-
-    /* Nothing on screen to close: open straight onto the new file. */
-    if (have === "") {
-      setShown(wanted);
-      setPhase("opening");
-      return;
-    }
-
-    /* Nothing to wipe to, and something behind already covering us. */
-    if (!wanted && snap) {
-      setShown(null);
-      setPhase("open");
-      return;
-    }
-
-    setPhase("closing");
-
-    const timer = window.setTimeout(() => {
-      setShown(wanted);
-      setPhase(wanted ? "opening" : "open");
-    }, CLOSE_MS);
-
-    return () => window.clearTimeout(timer);
-
-    /*
-     * Keyed on the CONTENT of both sheets, not on the objects. `wanted` is
-     * rebuilt every render, so an object dependency would restart the close
-     * on every frame the accent changes and the leaf would never arrive.
-     */
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [want, have]);
-
-  if (!shown) {
+  if (!visible) {
     return null;
   }
 
   return (
     <section
-      aria-label="Notes"
+      aria-label={heading ?? "Notes"}
       style={{
         position: "absolute",
-        inset: 0,
 
         /*
-         * Transparent. The manila underneath is the slide's own background,
-         * painted by the canvas — see the note at the top of the file.
+         * The left half, and it stops at the middle. The act is framed into
+         * the right half by the projection — see `leafSplit` in `Present.tsx`
+         * — so this column and that one divide the frame between them and
+         * neither needs to know the other's size.
          */
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: "50%",
+
+        zIndex: 3,
         pointerEvents: "none",
 
-        /*
-         * NO `zIndex` HERE, AND IT IS NOT AN OVERSIGHT.
-         *
-         * Any element that creates a stacking context also creates an
-         * isolated blending group, and the two treatment layers below have to
-         * blend with the CANVAS. Put a z-index on this section and they blend
-         * with the section's own empty backdrop instead — which composites to
-         * nothing at all, so the act sits there fully lit and fully coloured
-         * and looks pasted onto the folder. Ordering is handled by DOM
-         * position: this renders after the canvas, so it paints over it.
-         */
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        gap: "clamp(14px, 2.4vh, 30px)",
+        padding:
+          "clamp(32px, 5vh, 72px) clamp(28px, 3.4vw, 60px) clamp(32px, 5vh, 72px) clamp(40px, 6vw, 104px)",
+
+        color: TEXT,
       }}
     >
       <style>
         {`
-          @keyframes folder-open {
-            from { transform: translateX(0); }
-            to { transform: translateX(101%); }
-          }
-
-          @keyframes folder-close {
-            from { transform: translateX(101%); }
-            to { transform: translateX(0); }
+          /*
+           * One authored moment: the page settles up into place. The lines
+           * follow the heading rather than arriving with it, which is what
+           * makes it read as a page being laid down instead of a block
+           * appearing.
+           */
+          @keyframes notes-in {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .folder-leaf { animation-duration: 1ms !important; }
+            [data-notes] { animation-duration: 1ms !important; }
           }
         `}
       </style>
 
-      {/*
-       * TREATMENT, layer one: drain the act toward the paper.
-       *
-       * A `color` blend imposes this layer's hue and saturation and keeps the
-       * backdrop's lightness, so the act keeps all of its shading and loses
-       * most of its own colour — which is what "drawn on the folder" means.
-       * Held at 40% so the sage and gold accents survive as tints.
-       *
-       * Over the flat manila background it is exactly a no-op: manila hue
-       * imposed on manila is manila. So the folder cannot drift even though
-       * the layer covers all of it.
-       */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: FOLDER,
-          mixBlendMode: "color",
-          opacity: 0.4,
-        }}
-      />
-
-      {/*
-       * TREATMENT, layer two: give the act the same tooth as the paper.
-       *
-       * Multiply, so it darkens into the grain rather than fogging it. Both
-       * layers cover the whole frame on purpose: the act and the folder
-       * sharing one surface texture is the thing that makes them read as one
-       * object instead of a render pasted onto a background.
-       */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: GRAIN,
-          backgroundSize: "160px 160px",
-          mixBlendMode: "multiply",
-          opacity: 0.16,
-        }}
-      />
-
-      {/*
-       * The fold.
-       *
-       * The most load-bearing thing on the slide, and it is two gradients.
-       * Without a seam the frame is one flat tan field and the sheet reads as
-       * floating on a coloured background; with it, the frame is two leaves
-       * and the sheet is lying on the left one. It is also what makes the
-       * paper look like it takes up half — halves need a middle.
-       */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `
-            linear-gradient(
-              to right,
-              rgba(0,0,0,.14) 0,
-              rgba(0,0,0,0) 5%,
-              rgba(0,0,0,0) 43%,
-              rgba(0,0,0,.13) 49.4%,
-              rgba(0,0,0,.2) 50%,
-              rgba(255,255,255,.16) 50.6%,
-              rgba(0,0,0,0) 58%,
-              rgba(0,0,0,0) 95%,
-              rgba(0,0,0,.14) 100%
-            ),
-            linear-gradient(
-              to bottom,
-              rgba(0,0,0,.16) 0,
-              rgba(0,0,0,0) 9%,
-              rgba(0,0,0,0) 91%,
-              rgba(0,0,0,.16) 100%
-            )
-          `,
-        }}
-      />
-
-      {/* The left leaf, and the sheet clipped to it. */}
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: "50%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div
+      {heading && (
+        <header
+          data-notes
           style={{
-            position: "relative",
-            height: PAGE_HEIGHT,
-            aspectRatio: `${PAGE_ASPECT}`,
-
-            /*
-             * A degree off square. Paper put into a folder by a person is
-             * never parallel to the folder, and the eye reads perfectly
-             * square as printed-on rather than placed.
-             */
-            transform: "rotate(-1.1deg)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "clamp(8px, 1.4vh, 16px)",
+            animation: snap
+              ? undefined
+              : "notes-in 520ms cubic-bezier(.2, .8, .2, 1) both",
           }}
         >
-          {/* The clip, pass one: the whole wire, behind the paper. */}
-          <ClipWire
-            d={CLIP_BEHIND}
-            shadow="drop-shadow(0 1px 2px rgba(0,0,0,.32))"
-          />
-
-          {/* The sheet. */}
-          <div
+          <h2
             style={{
-              position: "absolute",
-              inset: 0,
-              color: TEXT,
-              borderRadius: 2,
-              padding: `${PAGE_PAD_TOP} clamp(28px, 3vw, 44px) 0 ${PAGE_PAD_LEFT}`,
+              margin: 0,
+              fontSize: "clamp(1.6rem, min(3.4vw, 6vh), 2.9rem)",
+              fontWeight: 650,
+              letterSpacing: "-.05em",
+              lineHeight: 1,
+              textWrap: "balance",
+            }}
+          >
+            {heading}
+          </h2>
+
+          {/*
+           * The accent rule. The deck's flat pages all carry one under their
+           * heading, and this page is now one of them.
+           */}
+          <div
+            aria-hidden="true"
+            style={{ height: 2, background: accent, opacity: 0.55 }}
+          />
+        </header>
+      )}
+
+      <ul
+        style={{
+          margin: 0,
+          padding: 0,
+          listStyle: "none",
+          display: "flex",
+          flexDirection: "column",
+          gap: "clamp(10px, 1.8vh, 22px)",
+        }}
+      >
+        {notes.map((line, index) => (
+          <li
+            key={`${index}-${line}`}
+            data-notes
+            style={{
+              display: "flex",
+              gap: "clamp(10px, .9vw, 16px)",
+              fontSize: "clamp(.92rem, 1.35vw, 1.24rem)",
+              lineHeight: 1.5,
 
               /*
-               * NOT ONE FLAT CREAM.
-               *
-               * A single fill is the thing that reads as a div. Real paper
-               * under a raking light is brightest where the light hits and
-               * settles a shade warmer at the far corner, and the range
-               * involved is tiny — a couple of percent. It is below the
-               * threshold of anything you would call a gradient and well
-               * above the threshold of looking like a surface.
+               * Staggered behind the heading, and capped so a long list never
+               * leaves its last line arriving after the presenter has started
+               * talking about it.
                */
-              background: "#f7f2e4",
-
-              /*
-               * Three layers, topmost first: the ruling, the sheen, and the
-               * warm settle at the bottom right. The ruling is painted ON
-               * rather than spaced between elements, so the lines run past
-               * the last written word the way real paper does.
-               */
-              backgroundImage: `
-                repeating-linear-gradient(
-                  to bottom,
-                  transparent 0,
-                  transparent calc(${RULE} - 1px),
-                  rgba(86, 116, 156, .34) calc(${RULE} - 1px),
-                  rgba(86, 116, 156, .34) ${RULE}
-                ),
-                radial-gradient(
-                  120% 80% at 26% 8%,
-                  rgba(255,255,255,.85) 0,
-                  rgba(255,255,255,.28) 45%,
-                  rgba(255,255,255,0) 75%
-                ),
-                radial-gradient(
-                  90% 70% at 100% 100%,
-                  rgba(176,152,106,.22) 0,
-                  rgba(176,152,106,0) 70%
-                )
-              `,
-              backgroundPosition: `0 ${PAGE_PAD_TOP}, 0 0, 0 0`,
-              backgroundRepeat: "repeat, no-repeat, no-repeat",
-
-              fontSize: "clamp(1rem, 1.5vw, 1.5rem)",
-
-              /*
-               * Confines the tooth layer below to the paper.
-               *
-               * Without it that layer has no stacking context to blend
-               * inside and multiplies against the CANVAS instead — which is
-               * the same trap the section-level note at the top of this file
-               * describes, arrived at from the other direction. Here we want
-               * the containment; up there we want its absence.
-               */
-              isolation: "isolate",
-
-              /*
-               * Contact, near and far. One soft shadow floats the sheet a
-               * centimetre off the folder; what puts it DOWN on it is the
-               * tight dark line right under the edge.
-               */
-              boxShadow: `
-                0 1px 1px rgba(0,0,0,.20),
-                0 10px 20px -12px rgba(0,0,0,.45),
-                0 30px 55px -28px rgba(0,0,0,.55)
-              `,
+              animation: snap
+                ? undefined
+                : `notes-in 520ms cubic-bezier(.2, .8, .2, 1) ${
+                    120 + Math.min(index, 8) * 70
+                  }ms both`,
             }}
           >
             {/*
-             * Paper tooth. The same grain the act is given, at a third the
-             * strength, so the sheet is made of the same stuff as everything
-             * else in the frame instead of being the one smooth object in it.
+             * A dash rather than a bullet, in the accent. These are notes
+             * somebody took, not a specification — and a round bullet at this
+             * size reads as a slide template.
              */}
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                borderRadius: 2,
-                backgroundImage: GRAIN,
-                backgroundSize: "160px 160px",
-                mixBlendMode: "multiply",
-                opacity: 0.055,
-                pointerEvents: "none",
-              }}
-            />
-            {/* The margin rule. Red on real paper; here it takes the accent. */}
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                left: `calc(${PAGE_PAD_LEFT} - clamp(14px, 1.4vw, 22px))`,
-                width: 1,
-                background: accent,
-                opacity: 0.5,
-              }}
-            />
+            <span aria-hidden="true" style={{ color: accent, opacity: 0.8 }}>
+              —
+            </span>
 
-            {shown.heading && (
-              <h2
-                style={{
-                  margin: 0,
-                  marginBottom: RULE,
-                  fontFamily: "Caveat, cursive",
-                  fontSize: "1.85em",
-                  fontWeight: 700,
-                  lineHeight: RULE,
-                  letterSpacing: ".01em",
-                }}
-              >
-                {shown.heading}
-              </h2>
-            )}
-
-            <ul
-              style={{
-                margin: 0,
-                padding: 0,
-                listStyle: "none",
-                fontFamily: "Caveat, cursive",
-                fontSize: "1.25em",
-                fontWeight: 500,
-                lineHeight: RULE,
-              }}
-            >
-              {shown.notes.map((note, index) => (
-                <li
-                  key={index}
-                  style={{
-                    display: "flex",
-                    gap: ".55em",
-                    lineHeight: RULE,
-                  }}
-                >
-                  {/*
-                   * A dash, not a disc. `list-style` markers hang outside the
-                   * text box at the browser's own vertical offset, which is
-                   * nowhere near the ruled line; this one is a character in
-                   * the flow, so it sits on the rule with the words and looks
-                   * struck by the same pen.
-                   */}
-                  <span
-                    aria-hidden="true"
-                    style={{ color: accent, opacity: note ? 0.9 : 0 }}
-                  >
-                    —
-                  </span>
-
-                  <span>{note}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/*
-           * The clip, pass two: the outer run, in front of the paper.
-           *
-           * Everything this pass draws below the sheet's top edge is the half
-           * of the wire on THIS side of the page. The other half is already
-           * drawn, behind, and the edge is doing the work of hiding it.
-           */}
-          <ClipWire
-            d={CLIP_IN_FRONT}
-            shadow="drop-shadow(0 2px 3px rgba(0,0,0,.38))"
-          />
-        </div>
-      </div>
-
-      {/*
-       * THE LEAF THAT SWINGS SHUT.
-       *
-       * A manila panel that sweeps in from the right to cover the frame, and
-       * back out to reveal it. Closing runs first and opening second, so
-       * stepping from one file to the next reads as this one shutting and the
-       * next one opening.
-       *
-       * IT ALSO HIDES A CHEAT. The deck hard-cuts between slides: the moment
-       * you click, the act behind has ALREADY changed. There is no way to
-       * close a folder over the thing that was in it, because that thing is
-       * gone. But the leaf is opaque, so during the close there is nothing to
-       * see, and the swap happens underneath it. What the room watches is a
-       * file closing and another opening — which is the truth about the deck,
-       * just not the truth about the frame.
-       *
-       * `zIndex` HERE IS DELIBERATE, and it is 4 rather than 1: the headline
-       * and the slide counter sit at 2, and a folder that shuts with the
-       * caption still floating on top of it is not shut.
-       */}
-      <div
-        aria-hidden="true"
-        className="folder-leaf"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 4,
-          background: FOLDER,
-
-          /* The fold, on the leading edge, so the leaf has a spine. */
-          boxShadow: "inset 22px 0 40px -26px rgba(0,0,0,.75)",
-          borderLeft: "1px solid rgba(255,255,255,.22)",
-
-          transform: "translateX(101%)",
-          animation:
-            phase === "open"
-              ? undefined
-              : phase === "closing"
-                ? `folder-close ${CLOSE_MS}ms cubic-bezier(.5,0,.75,0) both`
-                : `folder-open ${OPEN_MS}ms cubic-bezier(.2,.8,.2,1) both`,
-        }}
-      />
+            <span style={{ opacity: 0.86 }}>{line}</span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

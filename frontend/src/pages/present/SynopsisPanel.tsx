@@ -76,7 +76,7 @@ export default function SynopsisPanel({
             color: accent,
           }}
         >
-          The role
+          
         </span>
 
         <h1

@@ -39,34 +39,51 @@ import * as THREE from "three";
 
 import type { Act } from "./act";
 
-import { SAGE_HEX } from "../palette";
+import { SAGE_HEX, TEXT_HEX } from "../palette";
+import { clamp01, smootherstep } from "../parts/easing";
 import { markUndrawn } from "../layers";
-import { createCabinet, type Cabinet } from "../parts/cabinet";
+import { createCabinet, FILE_H, FILE_W, type Cabinet } from "../parts/cabinet";
 
 /**
  * The lower drawer: work already done.
  *
- * These are the deck's acts 0 to 3 plus the six-project survey, in running
- * order, so the drawer reads top to bottom in the order the deck opens them.
- * `architecture` is not here because its slide is still hidden.
+ * In running order, so the drawer reads top to bottom in the order the deck
+ * opens them. `architecture` is not here because its slide is still hidden,
+ * and neither is "MISSION" — the `cog` slide it belonged to is hidden too.
+ *
+ * THESE ARRAYS ARE ONE HALF OF A PAIR. The other half is the `file` index on
+ * every slide's `entry` in `slides.ts`, which indexes straight into them. A
+ * label removed here without reindexing there hands a slide the wrong folder,
+ * silently — nothing typechecks the two against each other. Edit them
+ * together, and see the note on `cog` in `slides.ts` for the whole procedure.
  */
 const DONE = [
-  { label: "MISSION" },
-  { label: "AUTOMATE" },
-  { label: "PROCESSES" },
-  { label: "ONBOARD" },
+  { label: "automate" },
+  { label: "processes" },
+  { label: "onboard" },
 ];
 
 /**
- * The upper drawer: what is being proposed.
+ * The upper drawer.
  *
- * Opened second, after the lower drawer has been worked through, which is the
- * deck's whole shape — here is what was built, and here is what is next.
+ * ONE FILE, and it is not a slide. The three that used to live up here — DATA
+ * GAP, MODERNIZE and HOST — are all hidden, so this drawer no longer holds a
+ * proposal; it holds the deck's own summary, and the handoff slide opens it,
+ * takes that file out, and hands it to the corner of the page as the mark
+ * every remaining slide is stamped with.
+ *
+ * That is why the drawer stayed in the carcass when it emptied. Restoring any
+ * of the three hidden slides means adding its label back here AND giving it
+ * the right `file` index in `slides.ts` — this entry is index 0.
  */
 const PROPOSED = [
-  { label: "DATA GAP" },
-  { label: "MODERNIZE" },
-  { label: "HOST" },
+  /*
+   * No writing on this one. It is not a slide and never gets opened — it is
+   * taken out and becomes the mark in the corner of every page after, at a
+   * size where a word on the tab is a smear rather than a label. The tab is
+   * still there; it is the tab, not the writing, that makes it read as a file.
+   */
+  { label: "" },
 ];
 
 export interface CabinetState {
@@ -92,6 +109,37 @@ export interface CabinetState {
 
   /** 0 = shut, 1 = the upper drawer fully out. */
   upper: number;
+
+  /**
+   * 0 = the presented file is still the cabinet's, 1 = it is the corner mark.
+   *
+   * Parking RELEASES the file from the cabinet for good and pins it to the
+   * camera instead, so it holds the same corner of the frame whatever pose the
+   * slide is holding — including on slides that draw no cabinet at all.
+   */
+  park: number;
+
+  /** Whether the cabinet body is drawn. The parked file is not part of it. */
+  carcass: boolean;
+
+  /**
+   * Extra height for the presented file, in drawer-local units.
+   *
+   * Only the handoff uses it, and it is what makes that beat legible: see the
+   * note on `rise` in `parts/cabinet.ts`. Zero everywhere else, which is every
+   * ordinary file beat.
+   */
+  rise: number;
+
+  /**
+   * 0 = standing where it has stood all deck, 1 = slid clear of the frame.
+   *
+   * The deck's last gesture with the cabinet. It is a property of the SLIDE
+   * rather than of the act because only one slide ever asks for it — the
+   * handoff, which takes a file out and then gets the furniture out of the
+   * way so the file can become the page's corner mark.
+   */
+  exit: number;
 }
 
 /**
@@ -105,7 +153,47 @@ export interface CabinetState {
  */
 export type CabinetAct = Act<CabinetState>;
 
-export function createCabinetAct(): CabinetAct {
+/**
+ * Where the cabinet goes when it leaves, in the act's own units.
+ *
+ * Right and back rather than straight sideways: leaving along the camera's
+ * own axis as well as across it means the cabinet recedes as it goes, which
+ * reads as being put away rather than as being dragged off a stage.
+ *
+ * Generously past the frame edge. Sized to clear it from the CLOSEST pose the
+ * handoff holds, not the average one — at sixteen the far corner of the
+ * carcass was still hanging in shot on the last frame, and a cabinet that is
+ * ninety percent gone reads as a bug rather than as an exit.
+ */
+const EXIT_TRAVEL = new THREE.Vector3(26, -2.5, -10);
+
+/**
+ * WHERE THE PARKED FILE SITS, IN THE CAMERA'S OWN FRAME.
+ *
+ * Pinned to the lens rather than to the room, which is the only way a mark can
+ * hold one corner of the screen across slides that each point the camera
+ * somewhere different. Every frame the file is placed this far in front of the
+ * camera, offset by the share of the frame below, and turned to face it.
+ *
+ * The offsets are in NDC — -1 is the left or bottom edge, +1 the right or top
+ * — so they say where on the SCREEN it goes and stay true at any aspect the
+ * deck is projected at.
+ */
+const PARK_DISTANCE = 14;
+
+/*
+ * EXPORTED, because the slide number is drawn ON this file by `FileMark` and
+ * has to land on the same spot. Two copies of these numbers drift the first
+ * time the corner is nudged, and the failure is a number floating beside the
+ * folder rather than on it.
+ */
+export const PARK_NDC_X = -0.87;
+export const PARK_NDC_Y = -0.84;
+
+/** Small enough to read as a mark rather than as a prop still on stage. */
+const PARK_SCALE = 0.32;
+
+export function createCabinetAct(camera: THREE.PerspectiveCamera): CabinetAct {
   const root = new THREE.Group();
 
   /*
@@ -118,12 +206,59 @@ export function createCabinetAct(): CabinetAct {
 
   const accent = new THREE.Color(SAGE_HEX);
 
+  /* Scratch for the mark's facing. Rule 1 in `act.ts`. */
+  const spin = new THREE.Quaternion();
+
   const cabinet: Cabinet = createCabinet({
     lower: DONE,
     upper: PROPOSED,
   });
 
   root.add(cabinet.root);
+
+  /*
+   * Holder for the file once it has left the cabinet.
+   *
+   * A sibling of the carcass rather than a child, so the cabinet's exit slide
+   * does not carry the mark off with it — the whole point of the beat is that
+   * the furniture goes and the file stays.
+   */
+  const markGroup = new THREE.Group();
+  markGroup.visible = false;
+  root.add(markGroup);
+
+  /*
+   * THE MARK'S SHADOW.
+   *
+   * A card lying on a page has one, and without it the folder in the corner is
+   * a flat shape printed on the ground rather than an object resting on it.
+   * The deeper paper the file is repapered with on the way out (see
+   * `markMaterial` in `parts/cabinet.ts`) gives it contrast; this gives it a
+   * place to sit.
+   *
+   * Drawn rather than cast. A real shadow needs a light and a surface to fall
+   * on, and this file is pinned to the LENS — it hangs in front of whatever
+   * the slide's camera happens to be looking at, which on a flat page is
+   * nothing at all. So it is a rectangle of the deck's ink at low alpha,
+   * sized off the card and offset down and right, exactly as a printed drop
+   * shadow would be.
+   *
+   * `depthWrite` off so it never occludes anything behind it, and a child of
+   * the mark so it travels, turns and scales with the card without a second
+   * line of maths anywhere in `update`.
+   */
+  const shadeGeometry = new THREE.PlaneGeometry(FILE_W, FILE_H);
+
+  const shadeMaterial = new THREE.MeshBasicMaterial({
+    color: TEXT_HEX,
+    transparent: true,
+    opacity: 0.15,
+    depthWrite: false,
+  });
+
+  const shade = new THREE.Mesh(shadeGeometry, shadeMaterial);
+  shade.position.set(0.26, -0.26, -0.08);
+  markGroup.add(shade);
 
   /*
    * THE CABINET IS NOT A DRAWING.
@@ -149,9 +284,158 @@ export function createCabinetAct(): CabinetAct {
    * One frame. Both drawers are posed every frame from the slide's tracks;
    * nothing here keeps time of its own.
    */
+  /* Scratch, reused every frame. Rule 1 in `act.ts`. */
+  const parkWorld = new THREE.Vector3();
+  const camRight = new THREE.Vector3();
+  const camUp = new THREE.Vector3();
+  const camForward = new THREE.Vector3();
+
+  /** Which file is currently parked, so the reparent happens once. */
+  let parkedDrawer = -1;
+  let parkedFile = -1;
+
+  /*
+   * WHERE THE FILE WAS WHEN THE CABINET LAST HELD IT.
+   *
+   * Watched every frame while a file is presented, because the moment the
+   * handoff takes it the cabinet has already stopped posing it — so asking
+   * then would give the pose it fell back to, not the one the audience was
+   * looking at. Recording it continuously means the travel to the corner
+   * always starts from the exact frame the file was handed over on.
+   */
+  const heldPos = new THREE.Vector3();
+  const heldQuat = new THREE.Quaternion();
+  let heldScale = 1;
+
+  /* The pose the travel starts from, in the act's own space. */
+  const fromPos = new THREE.Vector3();
+  const fromQuat = new THREE.Quaternion();
+  let fromScale = 1;
+
+  const targetQuat = new THREE.Quaternion();
+
+  /**
+   * Take the file out of the cabinet and hold it, or give it back.
+   *
+   * Reparenting is done ONCE on each transition rather than every frame:
+   * `Object3D.add` is a splice out of one child array and a push onto
+   * another, and doing that sixty times a second to the same object is both
+   * wasted work and a good way to lose track of who owns the transform.
+   */
+  const setParked = (drawer: number, file: number) => {
+    if (parkedDrawer === drawer && parkedFile === file) {
+      return;
+    }
+
+    if (parkedDrawer >= 0) {
+      /* The cabinet puts it back in its own drawer. See `restore`. */
+      cabinet.restore(parkedDrawer, parkedFile);
+    }
+
+    parkedDrawer = drawer;
+    parkedFile = file;
+
+    if (drawer >= 0) {
+      const group = cabinet.release(drawer, file, markGroup);
+
+      if (group) {
+        /*
+         * The travel's starting pose, converted out of world space into the
+         * act's. `markGroup` is a child of the act root, so this is the frame
+         * its position and rotation are actually expressed in.
+         */
+        fromPos.copy(heldPos);
+        root.worldToLocal(fromPos);
+
+        root.getWorldQuaternion(spin);
+        fromQuat.copy(spin).invert().multiply(heldQuat);
+
+        fromScale = heldScale;
+      }
+    }
+
+    markGroup.visible = drawer >= 0;
+  };
+
   const update = (_delta: number, state: CabinetState) => {
     cabinet.setDrawers(state.lower, state.upper);
-    cabinet.setPresented(state.drawer, state.file, state.open);
+    cabinet.setPresented(state.drawer, state.file, state.open, state.rise);
+    cabinet.setExit(state.exit, EXIT_TRAVEL);
+
+    cabinet.root.visible = state.carcass;
+
+    /*
+     * Watch the presented file while the cabinet still owns it. See `heldPos`.
+     */
+    if (state.drawer >= 0 && state.file >= 0) {
+      const held = cabinet.fileGroup(state.drawer, state.file);
+
+      if (held) {
+        held.getWorldPosition(heldPos);
+        held.getWorldQuaternion(heldQuat);
+        heldScale = held.scale.x;
+      }
+    }
+
+    /*
+     * ON THE RAMP ALONE, and deliberately not also on the slide having stopped
+     * presenting the file.
+     *
+     * Those two do not land on the same frame: `until` retires the file the
+     * instant it passes, while `park` needs a frame or two to climb off zero.
+     * In that gap the file was neither presented nor released, so the pose
+     * loop reset it — and the folder visibly dropped back into the drawer
+     * before reappearing in the corner. Releasing on the ramp alone closes the
+     * gap: once taken, the file is skipped by the cabinet whatever the slide
+     * still says about it.
+     */
+    const parking = state.park > 0.001;
+
+    setParked(parking ? 1 : -1, parking ? 0 : -1);
+
+    if (!markGroup.visible) {
+      return;
+    }
+
+    /* --------------------------------------------- pin it to the lens */
+
+    camera.updateMatrixWorld();
+    camera.matrixWorld.extractBasis(camRight, camUp, camForward);
+
+    /* extractBasis hands back -forward, since a camera looks down its -Z. */
+    const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    const halfWidth = halfHeight * camera.aspect;
+
+    parkWorld
+      .copy(camera.position)
+      .addScaledVector(camForward, -PARK_DISTANCE)
+      .addScaledVector(camRight, PARK_NDC_X * halfWidth * PARK_DISTANCE)
+      .addScaledVector(camUp, PARK_NDC_Y * halfHeight * PARK_DISTANCE);
+
+    root.worldToLocal(parkWorld);
+
+    /*
+     * Square to the lens. The file spent the whole deck being looked at from
+     * wherever the cabinet happened to be; as a mark it is a flat thing on the
+     * page and has to read that way from any slide's camera.
+     */
+    root.getWorldQuaternion(spin);
+    targetQuat.copy(spin).invert().multiply(camera.quaternion);
+
+    /*
+     * IT TRAVELS. Position, turn and size are all carried from where the
+     * cabinet was holding the file to where the page keeps it, over the park
+     * ramp — the file crosses the frame rather than being gone from one place
+     * and present in another. Eased on the deck's house curve so it leaves and
+     * arrives with no velocity, the way every other move in here does.
+     */
+    const journey = smootherstep(clamp01(state.park));
+
+    markGroup.position.lerpVectors(fromPos, parkWorld, journey);
+    markGroup.quaternion.slerpQuaternions(fromQuat, targetQuat, journey);
+    markGroup.scale.setScalar(
+      THREE.MathUtils.lerp(fromScale, PARK_SCALE, journey)
+    );
   };
 
   const setAccent = (color: THREE.Color) => {
@@ -170,6 +454,8 @@ export function createCabinetAct(): CabinetAct {
 
   const dispose = () => {
     cabinet.dispose();
+    shadeGeometry.dispose();
+    shadeMaterial.dispose();
   };
 
   return { root, update, setAccent, reset, dispose };

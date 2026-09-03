@@ -249,29 +249,54 @@ export function createPipelineAct(): PipelineAct {
    * on stage that can show data going stale.
    */
   const serverGroup = new THREE.Group();
-  serverGroup.position.set(SHEET_X, SHEET_Y, -0.95);
+  serverGroup.position.set(SHEET_X, SHEET_Y, -1.05);
   serverGroup.rotation.y = -0.34;
   root.add(serverGroup);
 
   /*
-   * Deliberately LARGER than the sheet it sits behind. Sized to match, it was
-   * perfectly hidden by the thing it was supposed to be holding — the whole
-   * object rendered and none of it could be seen. Overhanging on every edge
-   * turns it into the chassis the sheet is mounted on, which is also the
-   * truer picture: the spreadsheet is a view, the database is the machine.
+   * A MACHINE THE SHEET IS MOUNTED ON, AND THE SHEET COVERS ITS FACE.
+   *
+   * It has to be larger than the sheet or it is perfectly hidden by the thing
+   * it is supposed to be holding — that much was always true. What was wrong
+   * was WHERE the extra went. Centred behind the panel and overhanging on
+   * every edge, the rack's bay stack is taller than the panel and its top and
+   * bottom bays stuck out above and below it: two bright steel slabs floating
+   * off a dark rectangle, which is what made the green board read as pasted
+   * onto the machine rather than mounted in it.
+   *
+   * So the whole rack drops. The bays now end just under the panel's top edge
+   * and run out below its bottom one, which puts every visible bay — with its
+   * status lamps and its vents — in ONE band under the screen. Read top to
+   * bottom the object is a display in a slim chassis, standing on the machine
+   * that feeds it, and both halves are legible at once.
+   *
+   * The numbers are load-bearing against the sheet's own size. The panel is
+   * 4.18 x 3.76 on stage (12 x 9 cells at 0.47 stride, backed and scaled by
+   * 0.68 above), and the bay stack is 78% of the rack's width by 90% of its
+   * height. Width 5.0 hides the bays behind the panel with a 0.4 chassis
+   * margin either side; the drop of 0.56 puts the top of the stack 0.05 under
+   * the panel's top edge. Change the sheet's scale and these have to move.
    */
   const store: Prop = createRack({
-    width: 5.4,
+    width: 5,
     height: 5.3,
     depth: 1.4,
     units: 7,
   });
 
+  store.root.position.y = -0.56;
   serverGroup.add(store.root);
 
-  /* Above the sheet's top edge, on the upper overhang. */
-  const serverLabel = createLabel("ATIKAN DATABASE", { width: 3.5 });
-  serverLabel.mesh.position.set(0, 2.32, 0.62);
+  /*
+   * ON THE BASE, UNDER THE SCREEN — and in FRONT of the rack's face.
+   *
+   * It used to sit at z = 0.62, which is inside a chassis 1.4 deep: the plate
+   * naming the one object on this stage that cannot be inferred from its shape
+   * was rendered every frame, buried in the box it names. It is now proud of
+   * the front face, on the band of machine that shows below the sheet.
+   */
+  const serverLabel = createLabel("ATIKAN DATABASE", { width: 3.2 });
+  serverLabel.mesh.position.set(0, -2.35, 0.85);
   serverGroup.add(serverLabel.mesh);
 
   /* ------------------------------------------------------ figure and crate */

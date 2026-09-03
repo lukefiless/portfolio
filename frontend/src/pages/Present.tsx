@@ -9,7 +9,11 @@ import { createOwnedAct } from "./present/acts/ownedAct";
 import BlueprintPanel from "./present/BlueprintPanel";
 import SynopsisPanel from "./present/SynopsisPanel";
 import MarketPanel from "./present/MarketPanel";
-import NotesPanel, { paperEdge } from "./present/NotesPanel";
+import SecurityPanel from "./present/SecurityPanel";
+import AppsPanel from "./present/AppsPanel";
+import OpsPanel from "./present/OpsPanel";
+import DiagramPanel from "./present/DiagramPanel";
+import NotesPanel from "./present/NotesPanel";
 import { createOnboardingAct } from "./present/acts/onboardingAct";
 import { createCabinetAct } from "./present/acts/cabinetAct";
 import { createProjectsAct } from "./present/acts/projectsAct";
@@ -67,7 +71,8 @@ const DRAWING_SHARE = 0.36;
  * copies of this arithmetic drift the first time the sheet changes size, and
  * the failure is silent overlap rather than an error.
  *
- * Everything returned is a fraction of frame width.
+ * Everything returned is a fraction of frame width, and none of it depends on
+ * the pixel size of the frame any more — see the note inside.
  */
 /**
  * The fold, as a fraction of frame width.
@@ -78,23 +83,17 @@ const DRAWING_SHARE = 0.36;
  */
 const FOLD = 0.5;
 
-function leafSplit(width: number, height: number, drawing: boolean) {
+function leafSplit(drawing: boolean) {
   /*
-   * THE LEAF BEGINS AT THE FOLD, NOT AT THE EDGE OF THE PAPER.
+   * THE RIGHT HALF, AND NOTHING CLEVERER.
    *
-   * `paperEdge` guards against the act creeping UNDER the sheet, and that is
-   * the only thing it is good for. It is not where the right leaf starts —
-   * on a large display the sheet stops growing at PAGE_HEIGHT_MAX while the
-   * leaf keeps widening, so the paper's edge falls further and further short
-   * of the middle. At 4K it lands at 37%, and anything anchored to it starts
-   * on the LEFT leaf: the drawing was spanning 39% to 61%, straddling the
-   * seam it is supposed to sit beside.
-   *
-   * So take whichever is further right. On a small window the sheet is the
-   * binding constraint and this is `paperEdge`; on a large one the fold is,
-   * and the leaf is simply the right half.
+   * This used to take the greater of the fold and the paper sheet's own right
+   * edge, because the sheet was a fixed-aspect page that stopped growing on a
+   * large display and the act had to keep clear of it. There is no sheet any
+   * more — the notes are a text column that simply owns the left half — so the
+   * two halves divide at the fold and neither has to measure the other.
    */
-  const leafLeft = Math.max(paperEdge(width, height) + ACT_GUTTER, FOLD);
+  const leafLeft = FOLD + ACT_GUTTER;
 
   if (!drawing) {
     return { drawingLeft: 0, drawingWidth: 0, actLeft: leafLeft };
@@ -253,7 +252,7 @@ export default function Page() {
     const pipelineAct = createPipelineAct();
     const architectureAct = createArchitectureAct();
     const onboardingAct = createOnboardingAct();
-    const cabinetAct = createCabinetAct();
+    const cabinetAct = createCabinetAct(camera);
     const projectsAct = createProjectsAct();
     const puzzleAct = createPuzzleAct();
     const localAiAct = createLocalAiAct();
@@ -405,11 +404,7 @@ export default function Page() {
            * so the act cannot creep back under the sheet when the window
            * changes shape and the sheet changes width with it.
            */
-          const boxLeft = leafSplit(
-            frameWidth,
-            frameHeight,
-            wantsDrawing
-          ).actLeft;
+          const boxLeft = leafSplit(wantsDrawing).actLeft;
 
           const boxWidth = Math.max(ACT_RIGHT - boxLeft, 0.2);
 
@@ -452,12 +447,12 @@ export default function Page() {
       sampleColor(slide.accent, Math.max(actTime, 0), accent);
 
       /*
-       * Manila is the inside of the folder, not the room it is opened in.
-       * During the beat the cabinet is on stage, so the ground is the
-       * cabinet's — see `background` on SlideEntry.
+       * A file beat carries its own ground, on its own clock, because it
+       * crosses between the room and the inside of a folder — see
+       * `background` on `SlideEntry`.
        */
       if (entry && inEntry) {
-        background.set(entry.background);
+        sampleColor(entry.background, slideTime, background);
       } else {
         sampleColor(slide.background, actTime, background);
       }
@@ -472,14 +467,14 @@ export default function Page() {
        * AND for every file beat, so it is the only act two different slides
        * can put up.
        */
-      cabinetAct.root.visible = inEntry || slide.act.kind === "cabinet";
+      cabinetAct.root.visible =
+        inEntry || slide.act.kind === "cabinet" || Boolean(slide.fileMark);
 
       cogAct.root.visible = !inEntry && slide.act.kind === "cog";
       pipelineAct.root.visible = !inEntry && slide.act.kind === "pipeline";
       architectureAct.root.visible =
         !inEntry && slide.act.kind === "architecture";
-      onboardingAct.root.visible =
-        !inEntry && slide.act.kind === "onboarding";
+      onboardingAct.root.visible = !inEntry && slide.act.kind === "onboarding";
       projectsAct.root.visible = !inEntry && slide.act.kind === "projects";
       puzzleAct.root.visible = !inEntry && slide.act.kind === "puzzle";
       localAiAct.root.visible = !inEntry && slide.act.kind === "local-ai";
@@ -497,22 +492,83 @@ export default function Page() {
          * moment the first is seated. With no `from`, handover is 0 and the
          * whole beat is the second move.
          */
-        const returning =
-          entry.from !== undefined && slideTime < entry.handover;
-
-        const open = returning
-          ? 1 - slideTime / Math.max(entry.handover, 1e-4)
-          : (slideTime - entry.handover) /
-            Math.max(entryLen - entry.handover, 1e-4);
+        const handoff = entry.handoff;
 
         cabinetAct.setAccent(accent);
-        cabinetAct.update(delta, {
-          lower: entry.drawer === 0 ? 1 : 0,
-          upper: entry.drawer === 1 ? 1 : 0,
-          drawer: entry.drawer,
-          file: returning ? (entry.from as number) : entry.file,
-          open,
-        });
+
+        if (handoff) {
+          /*
+           * The handoff variant: the cabinet posed straight from the entry's
+           * own tracks. See `handoff` on `SlideEntry` for why this lives on
+           * the page it leads to rather than on a slide of its own.
+           *
+           * Two files, in sequence, on one clock. The one that was left open
+           * by the previous slide shuts and goes back; only then does the
+           * summary come out of the other drawer. Same two-move shape as an
+           * ordinary swap — see the branch below — but across drawers.
+           */
+          const returning = slideTime < handoff.returnUntil;
+
+          if (returning) {
+            cabinetAct.update(delta, {
+              lower: sampleScalar(handoff.lower, slideTime),
+              upper: sampleScalar(handoff.upper, slideTime),
+
+              drawer: handoff.returnDrawer,
+              file: handoff.returnFile,
+
+              /* Open to shut, over the return window. */
+              open: 1 - slideTime / Math.max(handoff.returnUntil, 1e-4),
+
+              rise: 0,
+              park: 0,
+              exit: 0,
+              carcass: true,
+            });
+          } else {
+            const presenting = slideTime < handoff.until;
+
+            cabinetAct.update(delta, {
+              lower: sampleScalar(handoff.lower, slideTime),
+              upper: sampleScalar(handoff.upper, slideTime),
+              drawer: presenting ? handoff.presentDrawer : -1,
+              file: presenting ? handoff.presentFile : -1,
+              open: presenting ? sampleScalar(handoff.open, slideTime) : 0,
+              rise: sampleScalar(handoff.rise, slideTime),
+              park: sampleScalar(handoff.park, slideTime),
+              exit: sampleScalar(handoff.exit, slideTime),
+              carcass: true,
+            });
+          }
+        } else {
+          /*
+           * The beat is two moves sharing one clock: the file that was out
+           * goes back, and then the next one comes out. `handover` is the
+           * moment the first is seated. With no `from`, handover is 0 and the
+           * whole beat is the second move.
+           */
+          const returning =
+            entry.from !== undefined && slideTime < entry.handover;
+
+          const open = returning
+            ? 1 - slideTime / Math.max(entry.handover, 1e-4)
+            : (slideTime - entry.handover) /
+              Math.max(entryLen - entry.handover, 1e-4);
+
+          cabinetAct.update(delta, {
+            lower: entry.drawer === 0 ? 1 : 0,
+            upper: entry.drawer === 1 ? 1 : 0,
+            drawer: entry.drawer,
+            file: returning ? (entry.from as number) : entry.file,
+            open,
+
+            /* A file beat never moves the furniture, nor parks anything. */
+            exit: 0,
+            park: 0,
+            carcass: true,
+            rise: 0,
+          });
+        }
       } else if (slide.act.kind === "cog") {
         cogAct.setAccent(accent);
         cogAct.update(delta, {
@@ -528,23 +584,68 @@ export default function Page() {
         architectureAct.update(delta, {
           ordered: sampleScalar(slide.act.ordered, actTime),
         });
-      } else if (slide.act.kind === "synopsis" || slide.act.kind === "market") {
+      } else if (
+        slide.act.kind === "synopsis" ||
+        slide.act.kind === "market" ||
+        slide.act.kind === "security" ||
+        slide.act.kind === "apps" ||
+        slide.act.kind === "ops" ||
+        slide.act.kind === "diagram"
+      ) {
         /*
          * Flat slides. Nothing to pose — every act root is already hidden by
          * the visibility lines above, because none of them match these kinds,
          * so the canvas is left showing the slide's background and the DOM
          * panel draws over it.
+         *
+         * Except for the corner mark. The cabinet body is not drawn on these
+         * pages, but the file it gave up is still held against the lens by
+         * the same act — see `fileMark` in `slides.ts`.
          */
+        if (slide.fileMark) {
+          cabinetAct.setAccent(accent);
+          cabinetAct.update(delta, {
+            lower: 0,
+            upper: 0,
+            drawer: -1,
+            file: -1,
+            open: 0,
+            exit: 0,
+            park: 1,
+            carcass: false,
+            rise: 0,
+          });
+        }
       } else if (slide.act.kind === "cabinet") {
+        /*
+         * Most cabinet slides sit still and take nothing out, which is what
+         * the -1s mean. The handoff is the exception: it lifts a file clear of
+         * the open drawer and holds it there — see `present` in `slides.ts`.
+         */
+        /*
+         * `until` retires the presented file mid-slide — see `present` in
+         * `slides.ts`. Past it the cabinet poses as if nothing were ever taken
+         * out, which is what lets the drawer shut on an empty slot.
+         */
+        const presenting =
+          slide.act.present !== undefined &&
+          actTime < (slide.act.present.until ?? Infinity);
+
+        const present = presenting ? slide.act.present : undefined;
+
         cabinetAct.setAccent(accent);
         cabinetAct.update(delta, {
           lower: sampleScalar(slide.act.lower, actTime),
           upper: sampleScalar(slide.act.upper, actTime),
 
-          /* The cabinet's own slides sit still; nothing is being taken out. */
-          drawer: -1,
-          file: -1,
-          open: 0,
+          drawer: present ? present.drawer : -1,
+          file: present ? present.file : -1,
+          open: present ? sampleScalar(present.open, actTime) : 0,
+
+          exit: slide.act.exit ? sampleScalar(slide.act.exit, actTime) : 0,
+          park: slide.act.park ? sampleScalar(slide.act.park, actTime) : 0,
+          carcass: true,
+          rise: 0,
         });
       } else if (slide.act.kind === "puzzle") {
         puzzleAct.setAccent(accent);
@@ -809,7 +910,7 @@ export default function Page() {
        */}
       <BlueprintPanel
         visible={slide.act.kind === "owned" && !entering && frame.w > 0}
-        box={leafSplit(Math.max(frame.w, 1), Math.max(frame.h, 1), true)}
+        box={leafSplit(true)}
       />
 
       {/*
@@ -836,8 +937,13 @@ export default function Page() {
        * The two flat pages. Both read their content straight off the slide,
        * so the deck stays the single place any wording is edited.
        */}
+      {/*
+       * Held back through the entry. This page's way in is the cabinet
+       * handoff, and the summary standing over that animation from its first
+       * frame would give away the page the beat is walking toward.
+       */}
       <SynopsisPanel
-        visible={slide.act.kind === "synopsis"}
+        visible={slide.act.kind === "synopsis" && !entering}
         role={slide.act.kind === "synopsis" ? slide.act.role : ""}
         points={slide.act.kind === "synopsis" ? slide.act.points : []}
         accent={accent}
@@ -849,39 +955,60 @@ export default function Page() {
         accent={accent}
       />
 
-      {!slide.bare && !opened && !entering && (
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            /*
-             * Off during a file beat as well as on an opened folder. The
-             * beat ENDS on a frame that is nothing but manila, and cuts from
-             * there to a flat slide that has no vignette — so leaving it on
-             * would darken the corners of the last folder frame and light
-             * them again on the first flat one, which is the one cut in this
-             * deck that has to be invisible.
-             *
-             * The corner falloff only. The left-hand wash that used to sit
-             * on top of this was doing most of the damage: it darkened the
-             * whole left half to hold copy legible against a lit machine,
-             * and since the key and rim already fall off that way it read as
-             * half the stage being switched off. Large white type on a
-             * near-black ground does not need the help.
-             */
-            background: `
-            radial-gradient(
-              circle at 60% 48%,
-              transparent 0 30%,
-              rgba(0, 0, 0, 0.16) 66%,
-              rgba(0, 0, 0, 0.55) 100%
-            )
-          `,
-          }}
-        />
-      )}
+      <DiagramPanel
+        visible={slide.act.kind === "diagram"}
+        title={slide.act.kind === "diagram" ? slide.act.title : ""}
+        lede={slide.act.kind === "diagram" ? slide.act.lede : ""}
+        src={slide.act.kind === "diagram" ? slide.act.src : ""}
+        alt={slide.act.kind === "diagram" ? slide.act.alt : ""}
+        caption={slide.act.kind === "diagram" ? slide.act.caption : ""}
+        accent={accent}
+      />
+
+      {/*
+       * The security page. Narrowed on the kind the same way the two panels
+       * above are, so the props are only ever read off a slide that actually
+       * carries them.
+       */}
+      <SecurityPanel
+        visible={slide.act.kind === "security"}
+        part={slide.act.kind === "security" ? slide.act.part : undefined}
+        title={slide.act.kind === "security" ? slide.act.title : ""}
+        lede={slide.act.kind === "security" ? slide.act.lede : ""}
+        measures={slide.act.kind === "security" ? slide.act.measures : []}
+        note={slide.act.kind === "security" ? slide.act.note : ""}
+        accent={accent}
+      />
+
+      {/*
+       * The Dev page. Same head as the security pages and a different body —
+       * see `AppsPanel` on why the run is allowed to diverge below the rule.
+       */}
+      <AppsPanel
+        visible={slide.act.kind === "apps"}
+        part={slide.act.kind === "apps" ? slide.act.part : undefined}
+        title={slide.act.kind === "apps" ? slide.act.title : ""}
+        lede={slide.act.kind === "apps" ? slide.act.lede : ""}
+        apps={slide.act.kind === "apps" ? slide.act.apps : []}
+        note={slide.act.kind === "apps" ? slide.act.note : ""}
+        accent={accent}
+      />
+
+      {/*
+       * The Ops page. A claim and an arc — see `OpsPanel` on why the last of
+       * the three carries an argument rather than an inventory.
+       */}
+      <OpsPanel
+        visible={slide.act.kind === "ops"}
+        part={slide.act.kind === "ops" ? slide.act.part : undefined}
+        title={slide.act.kind === "ops" ? slide.act.title : ""}
+        lede={slide.act.kind === "ops" ? slide.act.lede : ""}
+        claim={slide.act.kind === "ops" ? slide.act.claim : ""}
+        support={slide.act.kind === "ops" ? slide.act.support : ""}
+        areas={slide.act.kind === "ops" ? slide.act.areas : []}
+        note={slide.act.kind === "ops" ? slide.act.note : ""}
+        accent={accent}
+      />
 
       {/*
        * Positioning lives on the frame and the entrance animation on the
@@ -961,23 +1088,6 @@ export default function Page() {
           </div>
         </section>
       )}
-
-      <footer
-        style={{
-          position: "absolute",
-          zIndex: 2,
-          right: 40,
-          bottom: 32,
-          color: accent,
-          fontSize: ".75rem",
-          letterSpacing: ".12em",
-          pointerEvents: "none",
-        }}
-      >
-        {String(index + 1).padStart(2, "0")}
-        {" / "}
-        {String(slides.length).padStart(2, "0")}
-      </footer>
     </main>
   );
 }
