@@ -751,8 +751,8 @@ const deck: readonly Slide[] = [
       {
         at: 0,
         value: {
-          title: "DevOps Pitch",
-          body: "by Luke Files",
+          title: "DevSecOps",
+          body: "- Luke Files",
         },
       },
     ],
@@ -1024,11 +1024,11 @@ const deck: readonly Slide[] = [
     notes: {
       heading: "Automations",
       lines: [
-        "Used to be one export done daily",
-        "A bloated system constantly freezing",
-        "It would regularly letting data expire",
-        "Now the records arrive on their own",
-        "A 5 minute loop keeps data modern",
+        "Was daily exports manually added to a growing single spreadsheet",
+        "Caused a limited system to be overloaded",
+        "Data expired by EOD, recurring freezes, and long load times",
+        "Now the records arrive automatically",
+        "Data is stored in a database and updated every 5 minutes",
       ],
     },
     duration: HANDOVER + 10,
@@ -2219,7 +2219,6 @@ const deck: readonly Slide[] = [
         { label: "Data Pipeline", icon: "pipeline" },
         { label: "Atikan AI", icon: "ai" },
       ],
-
     },
   },
 
@@ -2422,7 +2421,6 @@ const deck: readonly Slide[] = [
           note: "The unglamorous half of an operation is usually the part nobody owns. I am happy to be the person who owns it, and to write down how it works so it survives me.",
         },
       ],
-
     },
   },
 
