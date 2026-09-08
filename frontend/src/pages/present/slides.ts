@@ -1344,9 +1344,9 @@ const deck: readonly Slide[] = [
     notes: {
       heading: "Onboarding",
       lines: [
-        "New Clients / Prospects had to be tracked by hand",
+        "Clients & Prospects had to be tracked by hand to determin whose court and on/off track",
         "Now tracking is fully automated",
-        "Workflows are now organized and optimized to make sure no steps are missed",
+        "Workflows are organized and optimized to make sure no steps are missed",
       ],
     },
     duration: 32,
@@ -2201,7 +2201,8 @@ const deck: readonly Slide[] = [
       /* Unused while `part` is set — the word is the heading. */
       title: "",
 
-      lede: "Things I have built end to end, from the idea to the thing people open.",
+      lede: "",
+      // lede: "Things I have built end to end, from the idea to the thing people open.",
 
       /* ----------------------------------------------------------------
        * EDIT THE TILES HERE. `label` is the name under the shape; `icon`
@@ -2213,10 +2214,10 @@ const deck: readonly Slide[] = [
        * centred — but it wraps, so six lands as two rows of three.
        * ---------------------------------------------------------------- */
       apps: [
-        { label: "Atikan Fit", icon: "fit" },
+        { label: "Data Pipeline", icon: "pipeline" },
         { label: "Referral Engine", icon: "referral" },
         { label: "Meeting Assistant", icon: "meeting" },
-        { label: "Data Pipeline", icon: "pipeline" },
+        { label: "Atikan Fit", icon: "fit" },
         { label: "Atikan AI", icon: "ai" },
       ],
     },
@@ -2255,7 +2256,8 @@ const deck: readonly Slide[] = [
       part: "sec",
 
       title: "Security Rules",
-      lede: "The compliance that has already been accounted for.",
+      lede: "",
+      //lede: "The compliance that has already been accounted for.",
 
       measures: [
         {
@@ -2392,33 +2394,34 @@ const deck: readonly Slide[] = [
        * The rail is not numbered, on purpose. These run at the same time;
        * numbering them would say they happen in an order. See `OpsPanel`.
        * ---------------------------------------------------------------- */
-      lede: "The half of the job that never ships as code.",
+      lede: "",
+      //lede: "The half of the job that never ships as code.",
 
-      claim: "I want the work around the systems, not just the systems.",
+      claim: "Doing the work that is beyond just writing code",
 
       support:
-        "Someone has to answer the phone, chase the paperwork, run the seminar and call the client back. I would rather be that person than hand the process to somebody else once I have built it.",
+        "I can help in the areas that actually help the company run. Doing the jobs that need meticulous attention to detail, and helping get money in the door. Essentially the visible effectivity.",
 
       areas: [
         {
           label: "Client support",
-          note: "Own the queue: every request logged with an owner and a due date, so nothing sits waiting for somebody to notice it. I will build that system and then work it.",
+          note: "Building programs that allow us to get client feedback, answer questions, but more than anything let our clients voices feel heard.",
         },
         {
           label: "On the phone",
-          note: "Scheduling, review reminders, missing paperwork, event RSVPs, checking in after a meeting. I will make the calls, and every one of them lands back on the client record.",
+          note: "Filling in roles that might be lost from others leaving, I can take that place to help move the need and make sure our clients know their value.",
         },
         {
           label: "The day-to-day",
-          note: "The call list, the calendar, the follow-ups, account and vendor admin — the recurring work that decides whether a week runs smoothly or gets rescued on Friday.",
+          note: "Building call lists, creating and optimizing project management systems, and making sure the day-to-day is running smoothly.",
         },
         {
           label: "Client events and seminars",
-          note: "Plan it, fill the room from the CRM rather than from memory, run the day, and get every attendee back into the system the same week with a next action.",
+          note: "Make sure the events run seemlessly, get the data on who's there, have follow-ups, and get more clients in the door.",
         },
         {
           label: "Whatever is not getting done",
-          note: "The unglamorous half of an operation is usually the part nobody owns. I am happy to be the person who owns it, and to write down how it works so it survives me.",
+          note: "The unglamorous half of operations: make sure that the cracks aren't just fixed, building systems so there are no cracks to begin with.",
         },
       ],
     },
