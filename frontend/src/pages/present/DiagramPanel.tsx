@@ -26,6 +26,7 @@
  * made.
  */
 
+import PageHead from "./PageHead";
 import { TEXT } from "./palette";
 
 interface Props {
@@ -79,47 +80,30 @@ export default function DiagramPanel({
 
         display: "flex",
         flexDirection: "column",
-        gap: "clamp(10px, 1.6vh, 20px)",
-        padding: "clamp(24px, 3.6vw, 64px) clamp(28px, 5vw, 92px)",
+
+        /*
+         * THE RUN'S OWN MEASUREMENTS, and not a set of its own.
+         *
+         * This page used to carry a hand-built copy of the head block — its
+         * own heading, its own lede, its own rule — and the copy had drifted:
+         * the headline was two steps smaller than the same headline on Dev,
+         * the lede was a different size over a different measure, and the gap
+         * between them was .4rem against .5rem. Clicking from Sec to here
+         * moved every line on the page a little.
+         *
+         * So the head is `PageHead`, the same component the three DevSecOps
+         * pages use, and the gap and padding below are the literals they set.
+         * The deep foot is what clears the corner mark — see the long note in
+         * `SecurityPanel`.
+         */
+        gap: "clamp(14px, 2.4vh, 30px)",
+        padding:
+          "clamp(24px, 4vw, 72px) clamp(28px, 5vw, 92px) clamp(72px, 14vh, 160px)",
         color: TEXT,
         overflow: "hidden",
       }}
     >
-      <header
-        style={{ display: "flex", flexDirection: "column", gap: ".4rem" }}
-      >
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "clamp(1.7rem, min(4vw, 7vh), 3.4rem)",
-            fontWeight: 650,
-            letterSpacing: "-.055em",
-            lineHeight: 0.95,
-            textWrap: "balance",
-          }}
-        >
-          {title}
-        </h1>
-
-        {lede && (
-          <p
-            style={{
-              margin: 0,
-              maxWidth: "68ch",
-              fontSize: "clamp(.82rem, 1.1vw, 1rem)",
-              lineHeight: 1.5,
-              opacity: 0.72,
-            }}
-          >
-            {lede}
-          </p>
-        )}
-      </header>
-
-      <div
-        aria-hidden="true"
-        style={{ height: 2, background: accent, opacity: 0.55, flexShrink: 0 }}
-      />
+      <PageHead title={title} lede={lede} accent={accent} />
 
       {/*
        * THE DRAWING TAKES WHATEVER IS LEFT.

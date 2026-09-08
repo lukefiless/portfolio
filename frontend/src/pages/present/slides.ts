@@ -12,7 +12,7 @@
 
 import { TRIP } from "./acts/pipelineAct";
 import { DRAWER_PITCH } from "./parts/cabinet";
-import { BACKGROUND, FOLDER, GOLD, SAGE } from "./palette";
+import { BACKGROUND, GOLD, SAGE } from "./palette";
 import type { Keyframe } from "./timeline";
 import type { DevSecOpsPart } from "./DevSecOpsHeader";
 import type { AppTile } from "./AppsPanel";
@@ -206,9 +206,6 @@ export type ActTrack =
 
       /** Six is what the layout is built around; more wrap, fewer is fine. */
       measures: readonly SecurityMeasure[];
-
-      /** Footnote. Leave empty and the rule and the line are both omitted. */
-      note: string;
     }
   | {
       kind: "apps";
@@ -228,9 +225,6 @@ export type ActTrack =
 
       /** Five is what the layout is drawn for: three across, then two centred. */
       apps: readonly AppTile[];
-
-      /** Footnote. Leave empty and the rule and the line are both omitted. */
-      note: string;
     }
   | {
       kind: "ops";
@@ -255,9 +249,6 @@ export type ActTrack =
 
       /** The areas of the job. Five is what the rail is drawn for. */
       areas: readonly OpsArea[];
-
-      /** The closing line, under a rule at the foot. Empty omits both. */
-      note: string;
     }
   | {
       kind: "diagram";
@@ -452,6 +443,26 @@ export interface Slide {
   bare?: boolean;
 
   /**
+   * Set the copy in a solid band across the top of the frame, instead of
+   * floating it over the act.
+   *
+   * For a slide whose act is BUSY where the words have to go. The contents
+   * shot looks down into an open drawer of handwritten tabs, and a headline
+   * over that sits on a different backdrop in every frame of the drawer's
+   * travel — legible for part of the move and mush for the rest. The band
+   * fills with the slide's own ground and stops the cabinet at a fixed line,
+   * so the type is read against flat colour throughout.
+   *
+   * It is the SAME head the flat pages carry — see `HeadBar`, which builds it
+   * out of `PageHead` — so the headline lands on the same pixel here as it
+   * does on Dev, Sec and Ops, and the accent rule under it is the same rule.
+   *
+   * `layout` is ignored on a slide that sets this; the band is the top of the
+   * frame by definition.
+   */
+  headBar?: boolean;
+
+  /**
    * Keep the corner mark on screen — the real file, parked against the lens.
    *
    * For every page after the handoff. The cabinet itself is not drawn on these
@@ -469,6 +480,25 @@ export interface Slide {
    * on it.
    */
   notes?: SlideNotes;
+
+  /**
+   * Where the folder folds: the notes column's share of the frame, 0 to 1.
+   *
+   * Defaults to a half, which is what every opened folder used before this
+   * existed. The act is framed into whatever is left, so this is the one knob
+   * that changes how big an act RENDERS without moving its camera or touching
+   * the act itself — a wider leaf gives the same world width more pixels.
+   *
+   * It is the right knob for an act that has run out of room. Pulling the
+   * camera in past a certain point only crops the act's outer edges, and
+   * repacking the act's own geometry runs into whatever its widest moving part
+   * is; neither of those is true of this.
+   *
+   * Set it against the NOTES, not the act: the column has to keep holding its
+   * lines at a comfortable measure, so a slide with six short bullets can give
+   * room away and one with three long ones cannot.
+   */
+  fold?: number;
 
   /**
    * The file coming out of the drawer before this slide starts.
@@ -773,7 +803,14 @@ const deck: readonly Slide[] = [
      * up with the person saying it.
      */
     duration: 11,
-    layout: "bottom",
+
+    /*
+     * The headline goes in a band across the top rather than over the drawer.
+     * See `headBar` on `Slide`: the tabs are the busiest surface in the deck
+     * and the line has to stay readable across the whole of the drawer's
+     * travel. `layout` is not set because the band supersedes it.
+     */
+    headBar: true,
 
     copy: [{ at: 0, value: { title: "What is already built." } }],
 
@@ -801,7 +838,17 @@ const deck: readonly Slide[] = [
       { at: 6, value: [-0.4, -0.15, 1.9] },
     ],
 
-    accent: [{ at: 0, value: SAGE }],
+    /*
+     * GOLD, because this slide now carries the deck's head bar and every bar
+     * in the deck is gold — see the note on the architecture drawing. The
+     * accent is the rule's colour, so a sage one here would be the same
+     * mismatch the flat pages just had, moved onto the one 3D slide that
+     * shares their furniture.
+     *
+     * It also warms the tab emissive, which is the only other thing the
+     * accent touches on a cabinet slide — see `setAccent` in `parts/cabinet`.
+     */
+    accent: [{ at: 0, value: GOLD }],
     background: [{ at: 0, value: BACKGROUND }],
 
     act: {
@@ -895,12 +942,11 @@ const deck: readonly Slide[] = [
     target: [{ at: 0, value: [3, -0.5, -4] }],
     accent: [{ at: 0, value: SAGE }],
     /*
-     * Manila, not the deck's usual ground. This slide is a FOLDER LYING
-     * OPEN, so the whole frame is the inside of one — the sheet and the act
-     * are both sitting on it. Same constant the cabinet's folders use, so
-     * the file you saw pulled out of the drawer is the one you are reading.
+     * The deck's usual ground, not manila. This slide is a folder lying
+     * open, but the page keeps the room's colour instead of matching the
+     * file's — only the file itself (and its sheet) reads as manila now.
      */
-    background: [{ at: 0, value: FOLDER }],
+    background: [{ at: 0, value: BACKGROUND }],
     act: {
       kind: "cog",
       driverTeeth: [
@@ -1031,12 +1077,11 @@ const deck: readonly Slide[] = [
     accent: [{ at: 0, value: SAGE }],
 
     /*
-     * Manila, not the deck's usual ground. This slide is a FOLDER LYING
-     * OPEN, so the whole frame is the inside of one — the sheet and the act
-     * are both sitting on it. Same constant the cabinet's folders use, so
-     * the file you saw pulled out of the drawer is the one you are reading.
+     * The deck's usual ground, not manila. This slide is a folder lying
+     * open, but the page keeps the room's colour instead of matching the
+     * file's — only the file itself (and its sheet) reads as manila now.
      */
-    background: [{ at: 0, value: FOLDER }],
+    background: [{ at: 0, value: BACKGROUND }],
 
     act: {
       kind: "pipeline",
@@ -1100,6 +1145,20 @@ const deck: readonly Slide[] = [
       target: SWAP_TARGET,
     },
 
+    /*
+     * A NARROWER COLUMN THAN THE OTHER FOLDERS, so the grid gets the room.
+     *
+     * The only slide that sets it. The six mechanisms had run out of every
+     * other way to grow — see the camera note above — and the cost lands
+     * where it is cheapest: these notes are six bullets of two or three words
+     * and sit comfortably in 40% of the frame, where the Automations and
+     * Onboarding sheets carry full sentences and keep the usual half.
+     *
+     * The act's box grows by exactly what this gives up, so the grid renders
+     * about a fifth larger again with the camera untouched.
+     */
+    fold: 0.4,
+
     /* ------------------------------------------------------------------
      * EDIT THE NOTES HERE. This is the sheet clipped inside the open
      * folder, on the left of this slide. One string per bullet — keep it
@@ -1136,22 +1195,46 @@ const deck: readonly Slide[] = [
      * them.
      */
     /*
-     * IN FROM 20.4. The grid is framed into the right leaf of an open folder,
-     * which is roughly a third of the screen, and at the old distance the six
-     * mechanisms were postage stamps in the middle of it — legible, but not
-     * worth looking at. A quarter closer fills the leaf and still leaves the
-     * outermost cells clear of the frame edge on 16:9.
+     * IN FROM 20.4, AND THEN FROM 16.4. The grid is framed into the right leaf
+     * of an open folder — see `leafSplit` in `Present.tsx` — which is a little
+     * under half the frame, and the six mechanisms have to be worth looking at
+     * inside it rather than merely legible.
+     *
+     * The arithmetic, because guessing this crops a column: the leaf shows
+     * about 1.226 world units across per unit of camera distance. At 16.4 that
+     * was 20.1 units against a grid 13.7 wide — 68% of the leaf, and the six
+     * mechanisms read as postage stamps.
+     *
+     * 12.2 is where the camera stops being useful. The grid is 14.4 units
+     * wide — the dashboards reach 1.89 left of the outer column's centre, the
+     * call list 1.31 right of the other's — so at 12.2 it fills 96% of the
+     * leaf. Closer and the outer cells start leaving the frame.
+     *
+     * TIGHTENING THE ACT WAS TRIED TWICE AND DOES NOT WORK. See the note over
+     * `COL_GAP` in `projectsAct.ts`: the notes importer's sheets fly in from
+     * 2.3 units out, turned and much nearer the lens, so the columns cannot
+     * close past about 5.4 without that cell running into the call list. Both
+     * attempts shipped a top row with two cells merged into one silhouette.
+     *
+     * So the rest of the size came from the LEAF — see `fold` below. Widening
+     * the act's box does not change what world width the leaf shows, which is
+     * what this distance sets; it changes how many pixels that width is drawn
+     * across, which is the thing actually being asked for.
+     *
+     * AND IT IS CENTRED ON THE GRID, x = 0 rather than -1. The offset was
+     * harmless at the old distance and is not at this one: it pushes the grid
+     * a unit right inside the leaf, which spent most of the margin on the
+     * right-hand column while leaving twice as much on the left.
      */
-    camera: [{ at: 0, value: [-1, 2.85, 16.4] }],
-    target: [{ at: 0, value: [-1, 2.85, 0] }],
+    camera: [{ at: 0, value: [0, 2.85, 12.2] }],
+    target: [{ at: 0, value: [0, 2.85, 0] }],
     accent: [{ at: 0, value: SAGE }],
     /*
-     * Manila, not the deck's usual ground. This slide is a FOLDER LYING
-     * OPEN, so the whole frame is the inside of one — the sheet and the act
-     * are both sitting on it. Same constant the cabinet's folders use, so
-     * the file you saw pulled out of the drawer is the one you are reading.
+     * The deck's usual ground, not manila. This slide is a folder lying
+     * open, but the page keeps the room's colour instead of matching the
+     * file's — only the file itself (and its sheet) reads as manila now.
      */
-    background: [{ at: 0, value: FOLDER }],
+    background: [{ at: 0, value: BACKGROUND }],
     act: {
       kind: "projects",
       /*
@@ -1325,12 +1408,11 @@ const deck: readonly Slide[] = [
     accent: [{ at: 0, value: SAGE }],
 
     /*
-     * Manila, not the deck's usual ground. This slide is a FOLDER LYING
-     * OPEN, so the whole frame is the inside of one — the sheet and the act
-     * are both sitting on it. Same constant the cabinet's folders use, so
-     * the file you saw pulled out of the drawer is the one you are reading.
+     * The deck's usual ground, not manila. This slide is a folder lying
+     * open, but the page keeps the room's colour instead of matching the
+     * file's — only the file itself (and its sheet) reads as manila now.
      */
-    background: [{ at: 0, value: FOLDER }],
+    background: [{ at: 0, value: BACKGROUND }],
 
     act: {
       kind: "onboarding",
@@ -1650,8 +1732,8 @@ const deck: readonly Slide[] = [
 
     accent: [{ at: 0, value: GOLD }],
 
-    /* Manila. The frame is the inside of the file just opened. */
-    background: [{ at: 0, value: FOLDER }],
+    /* The room's ground, kept consistent with the rest of the deck. */
+    background: [{ at: 0, value: BACKGROUND }],
 
     act: {
       kind: "puzzle",
@@ -1735,8 +1817,8 @@ const deck: readonly Slide[] = [
 
     accent: [{ at: 0, value: SAGE }],
 
-    /* Manila. The frame is the inside of the file just opened. */
-    background: [{ at: 0, value: FOLDER }],
+    /* The room's ground, kept consistent with the rest of the deck. */
+    background: [{ at: 0, value: BACKGROUND }],
 
     act: {
       kind: "local-ai",
@@ -1864,8 +1946,8 @@ const deck: readonly Slide[] = [
 
     accent: [{ at: 0, value: SAGE }],
 
-    /* Manila. The frame is the inside of the file just opened. */
-    background: [{ at: 0, value: FOLDER }],
+    /* The room's ground, kept consistent with the rest of the deck. */
+    background: [{ at: 0, value: BACKGROUND }],
 
     act: {
       kind: "owned",
@@ -1874,26 +1956,33 @@ const deck: readonly Slide[] = [
     },
   },
   /*
-   * THE CLOSE — WHAT I AM ASKING FOR
+   * THE ARCHITECTURE
    *
-   * Flat. Every slide before this one made a single point with a moving
-   * object; this one stops moving and states the ask, with the seven beats
-   * gathered underneath it as evidence.
+   * The system as it actually stands, as a drawing. It closes the deck for the
+   * same reason the security page precedes it: both are pages the room reads
+   * and points at rather than watches, and this is the one somebody will ask
+   * questions about.
    *
-   * `bare: true` because the panel carries its own heading — the deck's copy
-   * layer would put a second title over the top of it.
+   * ------------------------------------------------------------------
+   * TO PUT THE DIAGRAM IN: drop the file in `frontend/public/diagrams/`
+   * and set `src` below to its path without `public` — so a file at
+   * `public/diagrams/architecture.png` is "/diagrams/architecture.png".
+   * SVG is worth exporting if the drawing tool offers it; it stays sharp
+   * at whatever resolution the deck is projected at.
+   * ------------------------------------------------------------------
    */
   {
-    id: "synopsis",
+    id: "architecture-diagram",
 
     /*
      * THE WAY OUT OF THE CABINET.
      *
-     * The deck's last cabinet beat, and it belongs to this page rather than to
-     * one of its own: as a separate slide it ended on an empty room and made
-     * the audience click through a blank frame to get here. As an entry the
-     * same fourteen seconds play and this page is simply standing there when
-     * they finish.
+     * The deck's last cabinet beat. It used to lead into a "Then vs. Now"
+     * summary slide; that page is gone, but the cabinet still has to close
+     * up and hand off its file, so the beat moved here instead. As a slide
+     * of its own it ended on an empty room and made the audience click
+     * through a blank frame — as an entry the same ten seconds play and this
+     * page is simply standing there when they finish.
      *
      * Lower drawer shuts, upper opens, the summary file comes out, the file
      * becomes the corner mark, the drawer shuts behind it and the cabinet
@@ -2019,80 +2108,6 @@ const deck: readonly Slide[] = [
 
     /* The file the handoff took out is still in the corner. */
     fileMark: true,
-    duration: 40,
-    bare: true,
-    copy: [],
-
-    /* Nothing is rendered in 3D, so the camera only has to exist. */
-    camera: [{ at: 0, value: [0, 3, 18] }],
-    target: [{ at: 0, value: [0, 2, 0] }],
-
-    accent: [{ at: 0, value: GOLD }],
-    background: [{ at: 0, value: BACKGROUND }],
-
-    act: {
-      kind: "synopsis",
-      role: "Then vs. Now",
-
-      /*
-       * Pre-filled from what the deck actually shows, in running order, so
-       * the summary and the slides cannot drift apart. Rewrite freely — this
-       * is the only place the wording lives.
-       */
-      points: [
-        // {
-        //   label: "Mission",
-        //   note: "I want to have an impact, and I want to be able to see it",
-        // },
-        {
-          label: "Data Then",
-          note: 'Daily manual exports and imports were required to keep data "close" to live',
-        },
-        {
-          label: "Onboarding Then",
-          note: "All clients had to be manually tracked for Whose Court and On/Off Track",
-        },
-        {
-          label: "Infrastructure Then",
-          note: "Google Sheets held all company data",
-        },
-        {
-          label: "Data Now",
-          note: "All data is ingested and uploaded in sub-5 minute intervals, feeding all microservices",
-        },
-        {
-          label: "Onboarding Now",
-          note: "All clients are automatically tracked and processed automatically, with workflows now organized and optimized",
-        },
-        {
-          label: "Infrastucture Now",
-          note: "Full tech stack, server maintained, security implemented, consistent testing and monitoring",
-        },
-      ],
-    },
-  },
-
-  /*
-   * THE ARCHITECTURE
-   *
-   * The system as it actually stands, as a drawing. It closes the deck for the
-   * same reason the security page precedes it: both are pages the room reads
-   * and points at rather than watches, and this is the one somebody will ask
-   * questions about.
-   *
-   * ------------------------------------------------------------------
-   * TO PUT THE DIAGRAM IN: drop the file in `frontend/public/diagrams/`
-   * and set `src` below to its path without `public` — so a file at
-   * `public/diagrams/architecture.png` is "/diagrams/architecture.png".
-   * SVG is worth exporting if the drawing tool offers it; it stays sharp
-   * at whatever resolution the deck is projected at.
-   * ------------------------------------------------------------------
-   */
-  {
-    id: "architecture-diagram",
-
-    /* The file the handoff took out is still in the corner. */
-    fileMark: true,
 
     duration: 60,
     bare: true,
@@ -2102,7 +2117,14 @@ const deck: readonly Slide[] = [
     camera: [{ at: 0, value: [0, 3, 18] }],
     target: [{ at: 0, value: [0, 2, 0] }],
 
-    accent: [{ at: 0, value: SAGE }],
+    /*
+     * GOLD, like every other flat page. The run used to alternate — this page
+     * and Dev in sage, Sec and Ops in gold — which put two different accent
+     * colours on four pages that are otherwise the same sheet, so the rule
+     * under the heading changed colour as you clicked through them for no
+     * reason the room could read.
+     */
+    accent: [{ at: 0, value: GOLD }],
     background: [{ at: 0, value: BACKGROUND }],
 
     act: {
@@ -2130,8 +2152,8 @@ const deck: readonly Slide[] = [
    * Everything before it showed something running; this is the layer under
    * all of it, which is visible exactly once — the day it does not hold.
    *
-   * It sits after the Then vs. Now summary on purpose. That page closes the
-   * argument about what changed; this one answers the question a room asks
+   * It sits after the architecture drawing on purpose. That page closes the
+   * argument about what was built; this one answers the question a room asks
    * straight afterwards, which is whether any of it is safe.
    *
    * ------------------------------------------------------------------
@@ -2161,7 +2183,8 @@ const deck: readonly Slide[] = [
     camera: [{ at: 0, value: [0, 3, 18] }],
     target: [{ at: 0, value: [0, 2, 0] }],
 
-    accent: [{ at: 0, value: SAGE }],
+    /* GOLD, like every other flat page. See the note on the drawing above. */
+    accent: [{ at: 0, value: GOLD }],
     background: [{ at: 0, value: BACKGROUND }],
 
     act: {
@@ -2197,7 +2220,6 @@ const deck: readonly Slide[] = [
         { label: "Atikan AI", icon: "ai" },
       ],
 
-      note: "",
     },
   },
 
@@ -2318,7 +2340,6 @@ const deck: readonly Slide[] = [
        * rather than repeating the lead-in. Leave it empty to drop the
        * footnote and its rule entirely.
        */
-      note: "CompTIA Security+ and AWS Certified Security – Specialty, both targeted for this year.",
     },
   },
 
@@ -2402,7 +2423,6 @@ const deck: readonly Slide[] = [
         },
       ],
 
-      note: "This is sales and service work, and I want it — with the systems already built to make it repeatable.",
     },
   },
 

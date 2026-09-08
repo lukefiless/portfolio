@@ -18,10 +18,9 @@
  * HOW IT DIFFERS FROM THE OTHER FLAT PAGES
  *
  * `SynopsisPanel` and `MarketPanel` are both a heading over a centred column.
- * This one runs the table to the full width, tops each cell with its own rule
- * so the grid reads as a sheet, and closes on a footnote rule at the foot of
- * the page. Same ink, same accent, same type ramp — a different page in the
- * same document, which is the point.
+ * This one runs the table to the full width and tops each cell with its own
+ * rule, so the grid reads as a sheet. Same ink, same accent, same type ramp —
+ * a different page in the same document, which is the point.
  *
  * The content is DATA, in `slides.ts`. Edit it there; nothing about the
  * wording lives in this file.
@@ -49,9 +48,6 @@ interface Props {
 
   /** Six is what the layout is built around. */
   measures: readonly SecurityMeasure[];
-
-  /** The certifications footnote. Empty omits the rule and the line. */
-  note: string;
 
   /** The slide's accent, so this page belongs to the same deck. */
   accent: string;
@@ -97,8 +93,8 @@ function density(count: number) {
      *
      * These two were 0.82 / 0.84 and left eighteen pixels hanging past the
      * bottom of a 720-line frame with ten controls on the page — measured,
-     * not guessed. Worth knowing if you retune them: the footnote is the
-     * thing that goes first, and it goes silently.
+     * not guessed. Worth knowing if you retune them: the page cannot scroll,
+     * so what overflows is simply lost, and it goes silently.
      */
     return { columns: 4, type: 0.78, title: 0.78 };
   }
@@ -112,7 +108,6 @@ export default function SecurityPanel({
   title,
   lede,
   measures,
-  note,
   accent,
 }: Props) {
   if (!visible) {
@@ -167,12 +162,13 @@ export default function SecurityPanel({
            * is a fixed measure rather than one scaled by `--sec-title` — that
            * variable tracks how dense the TABLE has to be, and letting it move
            * the heading put the word twelve pixels apart between a six-cell
-           * page and a ten-cell one. The footer takes the slack instead.
+           * page and a ten-cell one. The empty space at the foot takes the
+           * slack instead.
            *
            * THE FOOT OF THE PAGE IS NOT EMPTY. The corner mark — the file the
            * cabinet handed over, parked against the lens — sits in the bottom
-           * left of every page after the handoff, and the footnote pushed down
-           * to the bottom edge lands underneath it. The bottom padding is what
+           * left of every page after the handoff, and a table run to the
+           * bottom edge lands underneath it. The bottom padding is what
            * keeps them apart, and it is in `vh` because the mark is pinned in
            * normalised device coordinates: it takes the same share of the
            * frame's height whatever size the frame is, so a padding measured
@@ -383,50 +379,6 @@ export default function SecurityPanel({
           </article>
         ))}
       </div>
-
-      {note && (
-        <footer
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "clamp(6px, .9vh, 10px)",
-
-            /*
-             * Pushed to the FOOT of the page, not left trailing the table.
-             *
-             * The column is top-anchored so the heading holds still across the
-             * three pages, which leaves whatever the table does not use as
-             * empty space at the bottom. A footnote sitting directly under a
-             * short table reads as another row of it; sitting on the bottom
-             * edge it reads as a footnote.
-             */
-            marginTop: "auto",
-            paddingTop: "clamp(10px, 2vh, 26px)",
-          }}
-        >
-          <div aria-hidden="true" style={{ height: 1, background: RULE }} />
-
-          <p
-            style={{
-              margin: 0,
-              maxWidth: "88ch",
-              fontSize: "calc(clamp(.74rem, .98vw, .88rem) * var(--sec-title))",
-              lineHeight: 1.5,
-              opacity: 0.78,
-            }}
-          >
-            {/*
-             * The label is set in the accent and inline, so the footnote reads
-             * as one sentence rather than as another table row. Change the
-             * wording here; the text after it is data, in `slides.ts`.
-             */}
-            <span style={{ color: accent, fontWeight: 700 }}>
-              Working toward{" "}
-            </span>
-            {note}
-          </p>
-        </footer>
-      )}
     </section>
   );
 }

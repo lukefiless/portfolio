@@ -78,12 +78,23 @@ const DONE = [
  */
 const PROPOSED = [
   /*
-   * No writing on this one. It is not a slide and never gets opened — it is
-   * taken out and becomes the mark in the corner of every page after, at a
-   * size where a word on the tab is a smear rather than a label. The tab is
-   * still there; it is the tab, not the writing, that makes it read as a file.
+   * THE ONE LABEL THAT ANSWERS THE OTHER DRAWER.
+   *
+   * The lower drawer's three tabs say what was built. This one says what the
+   * deck is for, and it is the only word the upper drawer ever shows — so the
+   * moment that drawer runs out, the room has read the turn before a word is
+   * said about it.
+   *
+   * It carried no writing at all for a while, on the argument that this file
+   * is never opened and ends up as the corner mark at a size where a word on
+   * the tab is a smear. Both halves of that are still true, and neither is a
+   * reason for the tab to be blank while it is IN THE DRAWER, which is the
+   * only time anybody can read it: `release` takes the lettering off the
+   * moment the file parks in the corner — see `labelMesh` in `parts/cabinet`
+   * — and `restore` puts it back if the file ever returns. The label is
+   * therefore only ever on screen at a size it can be read at.
    */
-  { label: "" },
+  { label: "what’s next" },
 ];
 
 export interface CabinetState {
@@ -436,6 +447,19 @@ export function createCabinetAct(camera: THREE.PerspectiveCamera): CabinetAct {
     markGroup.scale.setScalar(
       THREE.MathUtils.lerp(fromScale, PARK_SCALE, journey)
     );
+
+    /*
+     * AND THE PAPER DEEPENS ON THE WAY, on the same eased number as the move.
+     *
+     * The file has to change colour at some point — manila is invisible
+     * against the page's ground, which is what the mark colour exists to fix
+     * — but it used to change the instant it was released, standing still, and
+     * then set off. That read as two things happening: a folder going a
+     * different colour, and then a folder flying. Carried on `journey` it is
+     * one thing, and the recolour is hidden inside a move the eye is already
+     * following. See `setMarkBlend`.
+     */
+    cabinet.setMarkBlend(journey);
   };
 
   const setAccent = (color: THREE.Color) => {

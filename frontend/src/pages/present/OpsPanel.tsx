@@ -66,9 +66,6 @@ interface Props {
   /** The areas. Five is what the rail is drawn for; more is fine. */
   areas: readonly OpsArea[];
 
-  /** The closing line, under a rule at the foot. Empty omits both. */
-  note: string;
-
   /** The slide's accent, so this page belongs to the same deck. */
   accent: string;
 }
@@ -83,7 +80,6 @@ export default function OpsPanel({
   claim,
   support,
   areas,
-  note,
   accent,
 }: Props) {
   if (!visible) {
@@ -169,10 +165,10 @@ export default function OpsPanel({
 
             /*
              * TIGHT, and it has to be. Five areas with a two-line note each
-             * is most of the page's height before the head and the footnote
-             * are counted — measured, the first pass ran sixty pixels past the
-             * bottom of a 810-line frame and the closing line went under the
-             * corner mark. The page cannot scroll, so the rail gives.
+             * is most of the page's height once the head is counted —
+             * measured, the first pass ran sixty pixels past the bottom of an
+             * 810-line frame and the last area went under the corner mark.
+             * The page cannot scroll, so the rail gives.
              */
             gap: clamp(9px, 1.7vh, 22px);
           }
@@ -308,33 +304,6 @@ export default function OpsPanel({
           ))}
         </ul>
       </div>
-
-      {note && (
-        <footer
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "clamp(6px, .9vh, 10px)",
-            marginTop: "auto",
-            paddingTop: "clamp(10px, 2vh, 26px)",
-            flexShrink: 0,
-          }}
-        >
-          <div aria-hidden="true" style={{ height: 1, background: RULE }} />
-
-          <p
-            style={{
-              margin: 0,
-              maxWidth: "88ch",
-              fontSize: "clamp(.74rem, .98vw, .88rem)",
-              lineHeight: 1.5,
-              opacity: 0.78,
-            }}
-          >
-            {note}
-          </p>
-        </footer>
-      )}
     </section>
   );
 }

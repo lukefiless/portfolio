@@ -69,9 +69,6 @@ interface Props {
   /** Five is what the layout is drawn for: three across, then two centred. */
   apps: readonly AppTile[];
 
-  /** Footnote under the shelf. Empty omits the rule and the line. */
-  note: string;
-
   /** The slide's accent, so this page belongs to the same deck. */
   accent: string;
 }
@@ -155,7 +152,6 @@ export default function AppsPanel({
   title,
   lede,
   apps,
-  note,
   accent,
 }: Props) {
   if (!visible) {
@@ -330,32 +326,6 @@ export default function AppsPanel({
           </article>
         ))}
       </div>
-
-      {note && (
-        <footer
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "clamp(6px, .9vh, 10px)",
-            marginTop: "auto",
-            paddingTop: "clamp(10px, 2vh, 26px)",
-          }}
-        >
-          <div aria-hidden="true" style={{ height: 1, background: RULE }} />
-
-          <p
-            style={{
-              margin: 0,
-              maxWidth: "88ch",
-              fontSize: "clamp(.74rem, .98vw, .88rem)",
-              lineHeight: 1.5,
-              opacity: 0.78,
-            }}
-          >
-            {note}
-          </p>
-        </footer>
-      )}
     </section>
   );
 }

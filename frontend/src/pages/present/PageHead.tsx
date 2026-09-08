@@ -16,8 +16,10 @@
  * The eyebrow underneath the word never scaled at all, so the two lines under
  * the heading disagreed with each other AND with the next page.
  *
- * Nothing here scales with anything. The head is a fixed measure on every
- * page that uses it; only the content BELOW it is allowed to tighten.
+ * Nothing here scales with the CONTENT. The head is a fixed measure on every
+ * page that uses it; only the content BELOW it is allowed to tighten. The one
+ * exception is `scale`, which the pages never touch and which exists so the
+ * same head can also sit as a band over a 3D slide — see the prop.
  */
 
 import DevSecOpsHeader, { type DevSecOpsPart } from "./DevSecOpsHeader";
@@ -37,9 +39,31 @@ interface Props {
 
   /** The slide's accent, so the page belongs to the deck it is in. */
   accent: string;
+
+  /**
+   * Multiplies the head's type, and nothing else.
+   *
+   * THE RUN NEVER PASSES THIS. Dev, Sec, Ops and the drawing all take the
+   * default, which is the whole point of the note above — the head is one
+   * fixed measure across the pages that ARE pages, and a knob they could turn
+   * is how it drifted apart the first time.
+   *
+   * It exists for `HeadBar`, which is the same head over a 3D slide rather
+   * than at the top of a sheet. A band across the top of a scene is a slide's
+   * caption, not a document's headline, and at the run's full size it reads as
+   * the latter. The ramp is still the run's; only its size is scaled, so the
+   * relationship between the headline, the lede and the rule holds.
+   */
+  scale?: number;
 }
 
-export default function PageHead({ part, title, lede, accent }: Props) {
+export default function PageHead({
+  part,
+  title,
+  lede,
+  accent,
+  scale = 1,
+}: Props) {
   return (
     <>
       <header
@@ -73,7 +97,7 @@ export default function PageHead({ part, title, lede, accent }: Props) {
           <h1
             style={{
               margin: 0,
-              fontSize: "clamp(1.9rem, min(4.6vw, 8vh), 4rem)",
+              fontSize: `calc(clamp(1.9rem, min(4.6vw, 8vh), 4rem) * ${scale})`,
               fontWeight: 650,
               letterSpacing: "-.055em",
               lineHeight: 0.95,
@@ -96,7 +120,7 @@ export default function PageHead({ part, title, lede, accent }: Props) {
                * this line used to be multiplied by the table's density factor
                * and shrank on whichever page happened to have the most on it.
                */
-              fontSize: "clamp(.86rem, 1.15vw, 1.05rem)",
+              fontSize: `calc(clamp(.86rem, 1.15vw, 1.05rem) * ${scale})`,
               lineHeight: 1.5,
               opacity: 0.72,
             }}

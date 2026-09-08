@@ -60,6 +60,80 @@ import { NO_INK_LAYER, UNDRAWN_LAYER } from "./layers";
 const DESIGN_ASPECT = 16 / 9;
 const DESIGN_FOV = 38;
 
+/* ------------------------------------------------- the canvas's own ground
+ *
+ * THE DOM CANNOT JUST USE THE HEX THE SLIDE ASKED FOR.
+ *
+ * A slide names its ground as a colour — `#E7E3E0` — and the canvas paints it
+ * through the tone mapping set up below, which is not an identity: measured,
+ * that hex leaves the renderer as rgb(219, 218, 217). Anything in the DOM that
+ * has to sit flush against the canvas and read as the same surface — the band
+ * over the contents shot, the veil that covers a file beat's seam — therefore
+ * cannot paint the slide's hex. It has to paint what the canvas paints.
+ *
+ * So the curve is run here too. This is three.js's own ACES fit, transcribed
+ * from `tonemapping_pars_fragment.glsl.js`, wrapped in the sRGB decode and
+ * encode the renderer does either side of it. It agrees with the canvas to the
+ * byte on every colour in the palette, and it is the reason `EXPOSURE` is a
+ * constant rather than a literal on the renderer: the two must not drift.
+ */
+
+/** The renderer's exposure, and the JS curve's. One number, one place. */
+const EXPOSURE = 1.02;
+
+const ACES_INPUT = [
+  [0.59719, 0.35458, 0.04823],
+  [0.076, 0.90834, 0.01566],
+  [0.0284, 0.13383, 0.83777],
+];
+
+const ACES_OUTPUT = [
+  [1.60475, -0.53108, -0.07367],
+  [-0.10208, 1.10813, -0.00605],
+  [-0.00327, -0.07276, 1.07602],
+];
+
+const apply = (m: number[][], v: number[]) =>
+  m.map(row => row[0] * v[0] + row[1] * v[1] + row[2] * v[2]);
+
+/** three.js's `RRTAndODTFit`, per channel. */
+const rrtAndOdtFit = (v: number) => {
+  const a = v * (v + 0.0245786) - 0.000090537;
+  const b = v * (0.983729 * v + 0.432951) + 0.238081;
+
+  return a / b;
+};
+
+const toSrgb = (c: number) =>
+  c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055;
+
+/**
+ * The colour the CANVAS ends up showing for a scene background of `css`.
+ *
+ * Give it anything `THREE.Color` parses and it returns an `rgb(...)` string
+ * for the DOM. See the note above: this is the tone-mapped ground, not the
+ * colour the slide asked for, and the two are visibly different.
+ */
+export function screenColor(css: string): string {
+  const linear = new THREE.Color(css);
+
+  /*
+   * `THREE.Color` with the default colour management already holds the value
+   * in the working (linear) space, so the decode is not repeated here — its
+   * `r`, `g` and `b` are what the shader receives. The exposure divide by 0.6
+   * is three.js's, not a fudge: it is inside `ACESFilmicToneMapping`.
+   */
+  const exposed = [linear.r, linear.g, linear.b].map(c => c * (EXPOSURE / 0.6));
+
+  const fitted = apply(ACES_INPUT, exposed).map(rrtAndOdtFit);
+
+  const out = apply(ACES_OUTPUT, fitted).map(c =>
+    Math.round(Math.min(Math.max(toSrgb(Math.min(Math.max(c, 0), 1)), 0), 1) * 255)
+  );
+
+  return `rgb(${out[0]}, ${out[1]}, ${out[2]})`;
+}
+
 /**
  * How many buffer pixels the deck draws per CSS pixel, along each axis.
  *
@@ -168,9 +242,13 @@ export function createStage(
   /*
    * Filmic tone mapping is what keeps bright metal highlights from clipping
    * to flat white. Without it, polished surfaces read as paper.
+   *
+   * IF YOU CHANGE EITHER OF THESE, see `screenColor` at the foot of this file.
+   * The DOM has to be able to paint the same ground the canvas does, and it
+   * does that by running this same curve in JavaScript.
    */
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.02;
+  renderer.toneMappingExposure = EXPOSURE;
 
   /*
    * A starting value only. `resize` runs before the first frame and decides

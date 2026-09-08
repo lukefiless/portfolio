@@ -1,7 +1,7 @@
 /**
  * THE FILING CABINET
  *
- * Two drawers, each holding a row of hanging files with a handwritten tab.
+ * Two drawers, each holding a row of hanging files with a labelled tab.
  * The deck's opening object, and the frame the whole first half runs inside:
  * the lower drawer is work already done, the upper drawer is what is being
  * proposed.
@@ -19,15 +19,18 @@
  *
  * THE DRAWER IS THE TABLE OF CONTENTS
  *
- * The labels are the argument. A drawer of files with legible handwritten
- * tabs says "here is everything, and it is already filed" in one shot, which
- * is a claim a bulleted list of the same words cannot make — a list is
- * something you wrote for this presentation, and a drawer is something that
- * was already there.
+ * The labels are the argument. A drawer of files with legible tabs says "here
+ * is everything, and it is already filed" in one shot, which is a claim a
+ * bulleted list of the same words cannot make — a list is something you wrote
+ * for this presentation, and a drawer is something that was already there.
  *
- * That is also why the tabs are HANDWRITTEN rather than set in the deck's
- * monospace. Machine type on a file reads as a system's output; handwriting
- * reads as a person having filed it.
+ * The tabs were handwriting for a while, on the argument that a filed folder
+ * should look like a person filed it rather than like a system's output. It
+ * cost more than it returned: a script face is the least legible thing in the
+ * deck at the size a tab actually gets, and the drawer has to be READ. They
+ * are set in a serif now — see the `createLabel` call below — which is still
+ * not the deck's own sans, so a tab still reads as a different kind of object
+ * from a slide.
  */
 
 import * as THREE from "three";
@@ -73,7 +76,7 @@ export const FILE_H = DRAWER_H * 0.82;
 const TAB_H = 0.34;
 
 export interface CabinetFile {
-  /** The handwritten tab text. */
+  /** The tab text. */
   label: string;
 }
 
@@ -177,6 +180,23 @@ export interface Cabinet {
   fileGroup: (drawer: number, index: number) => THREE.Object3D | null;
 
   setAccent: (color: THREE.Color) => void;
+
+  /**
+   * How far a released file has finished becoming the page's mark, 0 to 1.
+   *
+   * The repaper that turns manila into the deeper mark colour — see
+   * `markMaterial` — used to happen in `release`, in one frame, at the instant
+   * the file was handed over. That put the whole colour change BEFORE the
+   * journey: the folder visibly changed colour while sitting still, and then
+   * set off for the corner. Two events where there is only one.
+   *
+   * So `release` now hands over a file that is still manila, and this carries
+   * the colour across the same 0..1 the travel uses. Call it every frame with
+   * the journey's own eased value and the paper deepens as the mark flies,
+   * arriving the moment it lands.
+   */
+  setMarkBlend: (amount: number) => void;
+
   dispose: () => void;
 }
 
@@ -487,7 +507,7 @@ export function createCabinet(options: CabinetOptions): Cabinet {
     tabMaterial: THREE.MeshStandardMaterial;
 
     /**
-     * The handwriting on the tab.
+     * The lettering on the tab.
      *
      * Held so it can be hidden when the file leaves the cabinet: the label is
      * a canvas texture sized to be read across a room, and shrunk to the size
@@ -777,11 +797,24 @@ export function createCabinet(options: CabinetOptions): Cabinet {
              */
             width: FILE_W * 0.21,
             color: TEXT,
-            tracking: 0.02,
-            weight: 600,
 
-            /* Handwritten. See the note at the top of the file on why. */
-            font: "Caveat",
+            /*
+             * Opened up a little. A serif set as tight as a script needs to be
+             * reads as a word squeezed onto the card; the extra air is what
+             * makes it read as a label that was typed for the tab.
+             */
+            tracking: 0.05,
+
+            /*
+             * TYPESET, not written. See the note at the top of the file: the
+             * tabs used to be handwriting, on the argument that a filed folder
+             * should look like a person filed it. They are a printed tab label
+             * now — the elegance comes from the face rather than from the
+             * pretence of a hand, and a serif at this size stays legible where
+             * a script was starting to cost readability for the effect.
+             */
+            weight: 600,
+            font: "Cormorant Garamond",
 
             background: `#${FILE_COLOR.toString(16).padStart(6, "0")}`,
             lit: true,
@@ -960,7 +993,7 @@ export function createCabinet(options: CabinetOptions): Cabinet {
    * the live-file glow), so it takes the colour rather than the material.
    *
    * Only the two PAPERS are swapped, matched by identity. Anything else on a
-   * file — the tab, and the handwriting, which is a canvas texture — has its
+   * file — the tab, and the lettering, which is a canvas texture — has its
    * own material, and a traversal that repainted everything it found would
    * turn the label into a blank manila rectangle the first time a file was
    * put back.
@@ -984,6 +1017,42 @@ export function createCabinet(options: CabinetOptions): Cabinet {
     file.tabMaterial.color.setHex(tabColor);
   };
 
+  /*
+   * THE MARK'S COLOUR, AS A JOURNEY RATHER THAN A SWITCH.
+   *
+   * Both ends are held as `THREE.Color` so the walk between them happens in
+   * the renderer's working space, which is where a lerp belongs: mixing two
+   * sRGB hex values by hand goes through a dip in the middle that reads as the
+   * paper briefly going muddy.
+   *
+   * `markMaterial` is shared by every released file, which is correct rather
+   * than a shortcut — the deck releases one, and if it ever released two they
+   * would be two copies of the same mark and should deepen together.
+   */
+  const MARK_FROM = new THREE.Color(FILE_COLOR);
+  const MARK_TO = new THREE.Color(MARK_COLOR);
+
+  const setMarkBlend = (amount: number) => {
+    const t = clamp01(amount);
+
+    markMaterial.color.copy(MARK_FROM).lerp(MARK_TO, t);
+
+    /*
+     * The tab travels with the card and has its own material, so it has to be
+     * walked too — left behind, the folder deepens while the tab standing on
+     * it stays drawer-manila, which is the same two-tone giveaway the swap
+     * used to produce all at once.
+     */
+    released.forEach(key => {
+      const [d, i] = key.split(":");
+      const file = fileAt(Number(d), Number(i));
+
+      if (file) {
+        file.tabMaterial.color.copy(MARK_FROM).lerp(MARK_TO, t);
+      }
+    });
+  };
+
   const release = (drawer: number, index: number, into: THREE.Object3D) => {
     const file = fileAt(drawer, index);
 
@@ -993,8 +1062,18 @@ export function createCabinet(options: CabinetOptions): Cabinet {
 
     released.add(`${drawer}:${index}`);
 
-    /* See `markMaterial`: manila is invisible against the page's ground. */
-    repaper(file, markMaterial, MARK_COLOR);
+    /*
+     * Onto the mark's material, but STILL MANILA.
+     *
+     * The swap has to happen now — the mark's paper is a different material
+     * from the drawer's, and the meshes have to be pointing at it before
+     * anything can drive its colour. What does not happen now is the colour
+     * change: `setMarkBlend(0)` holds it at the drawer's manila, and the act
+     * walks it to the mark colour over the same journey that carries the file
+     * to the corner. See `setMarkBlend`.
+     */
+    repaper(file, markMaterial, FILE_COLOR);
+    setMarkBlend(0);
 
     /* See `labelMesh`: unreadable at mark size, so it comes off. */
     if (file.labelMesh) {
@@ -1240,6 +1319,8 @@ export function createCabinet(options: CabinetOptions): Cabinet {
     setAccent: color => {
       tabMaterials.forEach(m => m.emissive.copy(color));
     },
+
+    setMarkBlend,
 
     dispose: () => {
       labels.forEach(l => l.dispose());

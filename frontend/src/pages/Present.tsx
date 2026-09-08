@@ -13,12 +13,13 @@ import SecurityPanel from "./present/SecurityPanel";
 import AppsPanel from "./present/AppsPanel";
 import OpsPanel from "./present/OpsPanel";
 import DiagramPanel from "./present/DiagramPanel";
+import HeadBar from "./present/HeadBar";
 import NotesPanel from "./present/NotesPanel";
 import { createOnboardingAct } from "./present/acts/onboardingAct";
 import { createCabinetAct } from "./present/acts/cabinetAct";
 import { createProjectsAct } from "./present/acts/projectsAct";
 import { createPipelineAct } from "./present/acts/pipelineAct";
-import { createStage } from "./present/stage";
+import { createStage, screenColor } from "./present/stage";
 import { firstSlide, slides } from "./present/slides";
 import { TEXT } from "./present/palette";
 import {
@@ -83,7 +84,16 @@ const DRAWING_SHARE = 0.36;
  */
 const FOLD = 0.5;
 
-function leafSplit(drawing: boolean) {
+/**
+ * The split, for a slide that wants a different one.
+ *
+ * `fold` is the notes column's share of the frame — see `fold` on `Slide`. It
+ * is threaded rather than read from the constant because the projects slide
+ * gives the act more room than the deck's other opened folders do, and both
+ * halves of the arithmetic have to agree about it: the DOM column that draws
+ * the notes, and the projection that frames the act into what is left.
+ */
+function leafSplit(drawing: boolean, fold: number = FOLD) {
   /*
    * THE RIGHT HALF, AND NOTHING CLEVERER.
    *
@@ -93,7 +103,7 @@ function leafSplit(drawing: boolean) {
    * more — the notes are a text column that simply owns the left half — so the
    * two halves divide at the fold and neither has to measure the other.
    */
-  const leafLeft = FOLD + ACT_GUTTER;
+  const leafLeft = fold + ACT_GUTTER;
 
   if (!drawing) {
     return { drawingLeft: 0, drawingWidth: 0, actLeft: leafLeft };
@@ -116,10 +126,85 @@ function leafSplit(drawing: boolean) {
  */
 const ACT_LIFT = 0.045;
 
+/* ------------------------------------------------------------- the veil
+ *
+ * EVERY FILE BEAT IS ENTERED AND LEFT THROUGH THE DECK'S OWN GROUND.
+ *
+ * A folder used to open onto its own manila: the beat ended with the inside of
+ * a file larger than the frame and the page it handed to had that same colour
+ * as its background, so the cut between them was a cut between two identical
+ * frames. The pages now keep the room's ground like every other slide, which
+ * is the right call for reading them and leaves that cut visible — a full
+ * frame of folder, then a hard jump to a grey page.
+ *
+ * So the seam is covered instead of hidden. One sheet of the slide's own
+ * background, over everything, opaque at the two moments a beat begins and
+ * ends and clear the rest of the time. Both directions come out of the same
+ * animation: stepping ONTO a folder slide fades the beat up out of the ground
+ * and the page in out of it, and stepping OFF one fades the page down into the
+ * ground before the drawer appears — because the beat that shuts one folder
+ * belongs to the slide taking the next one out.
+ *
+ * These are the three ramps, in seconds. They are deliberately short: the veil
+ * is a join, and a join the room has time to look at has stopped being one.
+ */
+
+/** Clearing the ground at the head of a beat, so the cabinet fades up. */
+const VEIL_IN = 0.42;
+
+/** Raising it again just before the beat hands over to the page. */
+const VEIL_UP = 0.34;
+
+/** Clearing it off the page once the page is standing there. */
+const VEIL_OUT = 0.44;
+
+/** Eased 0..1, so the ground arrives and leaves without a corner. */
+const smooth = (t: number) => {
+  const x = Math.min(Math.max(t, 0), 1);
+
+  return x * x * (3 - 2 * x);
+};
+
+/**
+ * How opaque the veil is, `t` seconds into a slide whose beat runs `entryLen`.
+ *
+ * DRIVEN BY THE LOOP, NOT BY CSS, and the difference matters. A keyframe
+ * animation runs on wall-clock time while the deck's clock is the sum of its
+ * own frame deltas — and those deltas are capped at 0.05s each (see the loop),
+ * so the moment the renderer drops under 20fps the slide falls behind the wall
+ * and a CSS veil would go opaque somewhere in the middle of the beat instead of
+ * at its seam. Reading the same clock the cabinet reads, it cannot drift: the
+ * ground is up exactly when the folder hands over, at any frame rate.
+ */
+function veilOpacity(t: number, entryLen: number): number {
+  /* Out of the ground at the head of the beat. */
+  if (t < VEIL_IN) {
+    return 1 - smooth(t / VEIL_IN);
+  }
+
+  /* Back into it, just before the beat hands the frame to the page. */
+  if (t >= entryLen - VEIL_UP && t < entryLen) {
+    return smooth((t - (entryLen - VEIL_UP)) / VEIL_UP);
+  }
+
+  /* And off the page, once the page is standing there. */
+  if (t >= entryLen && t < entryLen + VEIL_OUT) {
+    return 1 - smooth((t - entryLen) / VEIL_OUT);
+  }
+
+  return 0;
+}
+
 export default function Page() {
   const mountRef = useRef<HTMLDivElement>(null);
   const indexRef = useRef(0);
   const wheelRef = useRef(0);
+
+  /*
+   * The sheet of ground that covers a file beat's two seams. Written to
+   * directly by the loop rather than through state — see `veilOpacity`.
+   */
+  const veilRef = useRef<HTMLDivElement>(null);
 
   const [index, setIndex] = useState(0);
   const [copyIndex, setCopyIndex] = useState(0);
@@ -291,6 +376,9 @@ export default function Page() {
     let seenCopy = -1;
     let seenEntering: boolean | null = null;
 
+    /* The ground the veil is currently painted with. See the loop. */
+    let veilHex = -1;
+
     const resize = () => {
       stage.resize(mount.clientWidth, mount.clientHeight);
 
@@ -404,7 +492,7 @@ export default function Page() {
            * so the act cannot creep back under the sheet when the window
            * changes shape and the sheet changes width with it.
            */
-          const boxLeft = leafSplit(wantsDrawing).actLeft;
+          const boxLeft = leafSplit(wantsDrawing, slide.fold ?? FOLD).actLeft;
 
           const boxWidth = Math.max(ACT_RIGHT - boxLeft, 0.2);
 
@@ -458,6 +546,28 @@ export default function Page() {
       }
 
       (scene.background as THREE.Color).copy(background);
+
+      /*
+       * THE VEIL, on the deck's own clock.
+       *
+       * Opacity every frame, and the colour only when the ground actually
+       * changes — `screenColor` costs a colour conversion and the answer is
+       * the same on every slide in the deck as it stands.
+       */
+      const veil = veilRef.current;
+
+      if (veil) {
+        veil.style.opacity = entry
+          ? String(veilOpacity(slideTime, entryLen))
+          : "0";
+
+        const hex = background.getHex();
+
+        if (hex !== veilHex) {
+          veilHex = hex;
+          veil.style.background = screenColor(`#${hex.toString(16).padStart(6, "0")}`);
+        }
+      }
 
       /*
        * Narrowed on the act kind, so each act only ever sees its own
@@ -775,6 +885,14 @@ export default function Page() {
   const copy = hasCopy ? slide.copy[safeCopyIndex].value : null;
 
   /*
+   * This slide's copy goes in a solid band across the top instead of floating
+   * over the act — see `headBar` in `slides.ts`. It reads the same `copy` the
+   * ordinary block does, so the wording is still edited in one place, and the
+   * two are exclusive: whichever is showing, the other is not rendered.
+   */
+  const onHeadBar = hasCopy && Boolean(slide.headBar);
+
+  /*
    * Sampled at the copy keyframe's own time, not by its index — the colour
    * tracks keyframe independently, so indexing one by the other drifts them
    * out of step with the scene.
@@ -790,6 +908,17 @@ export default function Page() {
     copyAt,
     new THREE.Color()
   ).getStyle();
+
+  /*
+   * The same ground, as the CANVAS actually paints it.
+   *
+   * Everything in the DOM that has to sit flush against the canvas uses this
+   * rather than `background` — see `screenColor` in `stage.ts`. The slide's
+   * own hex goes through the renderer's tone mapping on its way to the screen
+   * and comes out a different colour, so a band painted with the hex reads as
+   * a panel laid ON the scene instead of as part of it.
+   */
+  const ground = screenColor(background);
 
   /**
    * Wheel and trackpad navigation, debounced.
@@ -829,7 +958,14 @@ export default function Page() {
         position: "fixed",
         inset: 0,
         overflow: "hidden",
-        background,
+
+        /*
+         * The canvas's ground, not the slide's hex. The canvas covers this
+         * completely once WebGL is up, so it only shows on the first paint —
+         * but a first paint in the wrong grey is a flash, and it is the same
+         * colour either way. See `ground` above.
+         */
+        background: ground,
         color: TEXT,
         cursor: "pointer",
         userSelect: "none",
@@ -887,6 +1023,27 @@ export default function Page() {
         `}
       </style>
 
+      {/*
+       * THE JOIN. Over everything, including the panels and the copy.
+       *
+       * Always mounted, and never touched by React after that: the loop owns
+       * its opacity and its colour, because both have to track the deck's own
+       * clock rather than the wall — see `veilOpacity`. The colour set here is
+       * only the one it wears until the first frame lands.
+       */}
+      <div
+        ref={veilRef}
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 6,
+          background: ground,
+          opacity: 0,
+          pointerEvents: "none",
+        }}
+      />
+
       <div
         ref={mountRef}
         style={{
@@ -910,7 +1067,7 @@ export default function Page() {
        */}
       <BlueprintPanel
         visible={slide.act.kind === "owned" && !entering && frame.w > 0}
-        box={leafSplit(true)}
+        box={leafSplit(true, slide.fold ?? FOLD)}
       />
 
       {/*
@@ -931,6 +1088,7 @@ export default function Page() {
         notes={slide.notes?.lines ?? []}
         heading={slide.notes?.heading}
         accent={accent}
+        fold={slide.fold ?? FOLD}
       />
 
       {/*
@@ -942,6 +1100,20 @@ export default function Page() {
        * handoff, and the summary standing over that animation from its first
        * frame would give away the page the beat is walking toward.
        */}
+      {/*
+       * `!entering` ON EVERY ONE OF THEM.
+       *
+       * A flat page is the ANSWER to the beat that leads into it, and the beat
+       * is the cabinet putting one file away and opening another. A page drawn
+       * from the first frame of its own entry stands over that animation and
+       * gives away where it was going — which is what the architecture drawing
+       * did once the handoff moved onto it: the diagram was simply there, and
+       * the cabinet closed up behind it for ten seconds with nothing to say.
+       *
+       * So the rule is the same on all of them rather than on whichever ones
+       * happen to have an entry today. A page with no entry never sees this
+       * flag go true, so it costs those nothing.
+       */}
       <SynopsisPanel
         visible={slide.act.kind === "synopsis" && !entering}
         role={slide.act.kind === "synopsis" ? slide.act.role : ""}
@@ -950,13 +1122,13 @@ export default function Page() {
       />
 
       <MarketPanel
-        visible={slide.act.kind === "market"}
+        visible={slide.act.kind === "market" && !entering}
         roles={slide.act.kind === "market" ? slide.act.roles : []}
         accent={accent}
       />
 
       <DiagramPanel
-        visible={slide.act.kind === "diagram"}
+        visible={slide.act.kind === "diagram" && !entering}
         title={slide.act.kind === "diagram" ? slide.act.title : ""}
         lede={slide.act.kind === "diagram" ? slide.act.lede : ""}
         src={slide.act.kind === "diagram" ? slide.act.src : ""}
@@ -971,12 +1143,11 @@ export default function Page() {
        * carries them.
        */}
       <SecurityPanel
-        visible={slide.act.kind === "security"}
+        visible={slide.act.kind === "security" && !entering}
         part={slide.act.kind === "security" ? slide.act.part : undefined}
         title={slide.act.kind === "security" ? slide.act.title : ""}
         lede={slide.act.kind === "security" ? slide.act.lede : ""}
         measures={slide.act.kind === "security" ? slide.act.measures : []}
-        note={slide.act.kind === "security" ? slide.act.note : ""}
         accent={accent}
       />
 
@@ -985,12 +1156,11 @@ export default function Page() {
        * see `AppsPanel` on why the run is allowed to diverge below the rule.
        */}
       <AppsPanel
-        visible={slide.act.kind === "apps"}
+        visible={slide.act.kind === "apps" && !entering}
         part={slide.act.kind === "apps" ? slide.act.part : undefined}
         title={slide.act.kind === "apps" ? slide.act.title : ""}
         lede={slide.act.kind === "apps" ? slide.act.lede : ""}
         apps={slide.act.kind === "apps" ? slide.act.apps : []}
-        note={slide.act.kind === "apps" ? slide.act.note : ""}
         accent={accent}
       />
 
@@ -999,15 +1169,26 @@ export default function Page() {
        * the three carries an argument rather than an inventory.
        */}
       <OpsPanel
-        visible={slide.act.kind === "ops"}
+        visible={slide.act.kind === "ops" && !entering}
         part={slide.act.kind === "ops" ? slide.act.part : undefined}
         title={slide.act.kind === "ops" ? slide.act.title : ""}
         lede={slide.act.kind === "ops" ? slide.act.lede : ""}
         claim={slide.act.kind === "ops" ? slide.act.claim : ""}
         support={slide.act.kind === "ops" ? slide.act.support : ""}
         areas={slide.act.kind === "ops" ? slide.act.areas : []}
-        note={slide.act.kind === "ops" ? slide.act.note : ""}
         accent={accent}
+      />
+
+      {/*
+       * The slide's copy as a band across the top, for a slide that asked for
+       * one. See `headBar` in `slides.ts`, and `HeadBar` for why it is solid.
+       */}
+      <HeadBar
+        visible={onHeadBar}
+        title={copy?.title ?? ""}
+        lede={copy?.body ?? ""}
+        accent={accent}
+        background={ground}
       />
 
       {/*
@@ -1017,7 +1198,7 @@ export default function Page() {
        * overrode the centring transform and left the copy hanging off the
        * bottom of the screen.
        */}
-      {hasCopy && copy && (
+      {hasCopy && copy && !onHeadBar && (
         <section
           className="present-frame"
           aria-live="polite"

@@ -35,12 +35,40 @@ import { createLabel, type Label } from "../parts/label";
 const COLS = 3;
 const ROWS = 2;
 
+/*
+ * 5.6, AND IT DOES NOT GO LOWER. THIS WAS TRIED TWICE.
+ *
+ * The grid is width-constrained inside the folder's right leaf, so tightening
+ * the columns looks like free size: pack the cells closer, move the camera in,
+ * everything renders larger. It is not free, and what stops it is the notes
+ * importer two cells along.
+ *
+ * That cell's sheets fly IN from the right — `lerp(2.3, 0, landed)` in the
+ * update loop below — so at the top of each sheet's cycle one is sitting 2.3
+ * units right of the cell's centre, turned 0.9 rad about Y, which throws its
+ * corner another 0.9 out. It is also at z = 1.4, a good deal nearer the lens
+ * than everything else, so perspective magnifies that offset: at the distances
+ * this slide uses it lands like 3.66 units at z = 0. The call list's rows are
+ * 2.62 wide, reaching 1.31 back toward it. So the two cells touch at any gap
+ * under about 4.97, and need ~5.4 before there is daylight between them.
+ *
+ * Both attempts at tightening measured the wrong thing. 4.3 was sized against
+ * the CAPTION, which is 2.5 wide under every cell and is nobody's widest part;
+ * 4.8 was sized against a single screenshot of the arm, which is animated and
+ * was not at full reach in that frame. Both shipped a top row where the middle
+ * and right cells merged into one silhouette.
+ *
+ * The size this slide wanted came from the leaf instead — see `fold` on the
+ * projects slide in `slides.ts`.
+ */
 const COL_GAP = 5.6;
 
 /*
- * Tighter than the column gap on purpose. Vertical room is what the copy
- * competes for, and a caption sitting directly under its object already
- * separates the rows without help from the spacing.
+ * NO LONGER tighter than the column gap, and left where it is deliberately.
+ * The columns came in to buy size — see above — and the rows had no reason to
+ * follow: vertical room is the one thing this act has spare in a leaf taller
+ * than it is wide, and spending it would only crowd each caption against the
+ * mechanism of the row beneath.
  */
 const ROW_GAP = 4.5;
 

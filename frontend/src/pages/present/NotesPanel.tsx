@@ -52,6 +52,17 @@ interface Props {
 
   /** The slide's accent, so the page belongs to the deck it is in. */
   accent: string;
+
+  /**
+   * This column's share of the frame, 0 to 1.
+   *
+   * Passed in rather than fixed at a half, because the act on the other leaf
+   * is framed into whatever is left — see `leafSplit` in `Present.tsx`. The
+   * two numbers are the same number, and a column that drew itself at 50%
+   * while the projection framed the act against 40% would either overlap it or
+   * leave a stripe of nothing down the middle.
+   */
+  fold: number;
 }
 
 export default function NotesPanel({
@@ -60,6 +71,7 @@ export default function NotesPanel({
   notes,
   heading,
   accent,
+  fold,
 }: Props) {
   if (!visible) {
     return null;
@@ -72,15 +84,15 @@ export default function NotesPanel({
         position: "absolute",
 
         /*
-         * The left half, and it stops at the middle. The act is framed into
-         * the right half by the projection — see `leafSplit` in `Present.tsx`
-         * — so this column and that one divide the frame between them and
-         * neither needs to know the other's size.
+         * The left column, and it stops where the fold is. The act is framed
+         * into what is left by the projection — see `leafSplit` in
+         * `Present.tsx` — so this column and that one divide the frame between
+         * them at one shared number, and neither has to measure the other.
          */
         left: 0,
         top: 0,
         bottom: 0,
-        width: "50%",
+        width: `${fold * 100}%`,
 
         zIndex: 3,
         pointerEvents: "none",

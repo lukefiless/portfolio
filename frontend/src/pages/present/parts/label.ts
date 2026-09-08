@@ -49,7 +49,7 @@ export interface LabelOptions {
   /**
    * Font family to draw with. Defaults to the monospace stack above.
    *
-   * Pass a webfont family here — `"Caveat"` for the handwritten file labels.
+   * Pass a webfont family here — `"Cormorant Garamond"` for the file tabs.
    * See the repaint note in the body: a webfont has almost certainly NOT
    * arrived by the time acts are built, so a label asking for one paints
    * twice.
@@ -119,12 +119,12 @@ export function createLabel(text: string, options: LabelOptions): Label {
    * measure the same string in two different fonts, which only rarely
    * produces the same total width by coincidence, so most labels never showed
    * it. But the tab labels on the filing cabinet do it on nearly every word,
-   * because the fallback (a generic serif, since Caveat has no fallback
-   * stack of its own) and the loaded handwriting font track close enough
+   * because the fallback (a generic serif, since a bare family name has no
+   * fallback stack of its own) and the loaded webfont track close enough
    * through most of a short word that only the last letter or two drifts far
    * enough to stop overlapping — which is exactly why the ghost only ever
-   * showed as a trailing fragment, on every tab, once the handwritten face
-   * had loaded in.
+   * showed as a trailing fragment, on every tab, once the real face had
+   * loaded in.
    *
    * A fresh canvas sidesteps the question entirely: there is no old bitmap to
    * fail to clear.
@@ -241,7 +241,7 @@ export function createLabel(text: string, options: LabelOptions): Label {
    *
    * Acts are built at page load, and a Google font has almost certainly not
    * arrived by then. Canvas does not wait: `measureText` and `fillText`
-   * silently use the fallback, so a label asking for Caveat gets drawn in
+   * silently use the fallback, so a label asking for a webfont gets drawn in
    * monospace and stays that way for the life of the page — with no error and
    * nothing in the console to explain it.
    *
