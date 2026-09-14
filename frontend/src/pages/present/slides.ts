@@ -2460,7 +2460,7 @@ const deck: readonly Slide[] = [
       lede: "",
       //lede: "The half of the job that never ships as code.",
 
-      claim: "Doing the work that is beyond just writing code",
+      claim: "Making your lives easier",
 
       support:
         "I can help in the areas that actually help the company run. Doing the jobs that need meticulous attention to detail, and helping get money in the door. Essentially the visible effectivity.",
@@ -2565,7 +2565,8 @@ const deck: readonly Slide[] = [
         {
           name: "Six services",
           result: "Dashboards, importers, the call list, timecards, cleanup.",
-          before: "Was done by hand when there was time, and skipped when there was not.",
+          before:
+            "Was done by hand when there was time, and skipped when there was not.",
         },
         {
           name: "Onboarding",
@@ -2602,7 +2603,8 @@ const deck: readonly Slide[] = [
         ],
 
         /* The last line of the deck. */
-        returns: "The gap between LPL and Wealthbox is the next one to close — and everything above keeps running while it is.",
+        //returns: "The gap between LPL and Wealthbox is the next one to close — and everything above keeps running while it is.",
+        returns: "",
       },
     },
   },
