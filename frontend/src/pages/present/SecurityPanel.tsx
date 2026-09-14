@@ -17,7 +17,7 @@
  *
  * HOW IT DIFFERS FROM THE OTHER FLAT PAGES
  *
- * `SynopsisPanel` and `MarketPanel` are both a heading over a centred column.
+ * `MarketPanel` is a heading over a centred column.
  * This one runs the table to the full width and tops each cell with its own
  * rule, so the grid reads as a sheet. Same ink, same accent, same type ramp —
  * a different page in the same document, which is the point.

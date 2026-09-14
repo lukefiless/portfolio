@@ -7,7 +7,7 @@ import { createPuzzleAct } from "./present/acts/puzzleAct";
 import { createLocalAiAct } from "./present/acts/localAiAct";
 import { createOwnedAct } from "./present/acts/ownedAct";
 import BlueprintPanel from "./present/BlueprintPanel";
-import SynopsisPanel from "./present/SynopsisPanel";
+import RecapPanel from "./present/RecapPanel";
 import MarketPanel from "./present/MarketPanel";
 import SecurityPanel from "./present/SecurityPanel";
 import AppsPanel from "./present/AppsPanel";
@@ -695,7 +695,7 @@ export default function Page() {
           ordered: sampleScalar(slide.act.ordered, actTime),
         });
       } else if (
-        slide.act.kind === "synopsis" ||
+        slide.act.kind === "recap" ||
         slide.act.kind === "market" ||
         slide.act.kind === "security" ||
         slide.act.kind === "apps" ||
@@ -1114,10 +1114,20 @@ export default function Page() {
        * happen to have an entry today. A page with no entry never sees this
        * flag go true, so it costs those nothing.
        */}
-      <SynopsisPanel
-        visible={slide.act.kind === "synopsis" && !entering}
-        role={slide.act.kind === "synopsis" ? slide.act.role : ""}
-        points={slide.act.kind === "synopsis" ? slide.act.points : []}
+      <RecapPanel
+        visible={slide.act.kind === "recap" && !entering}
+        title={slide.act.kind === "recap" ? slide.act.title : ""}
+        headings={
+          slide.act.kind === "recap"
+            ? slide.act.headings
+            : { was: "", now: "" }
+        }
+        built={slide.act.kind === "recap" ? slide.act.built : []}
+        close={
+          slide.act.kind === "recap"
+            ? slide.act.close
+            : { parts: [], returns: "" }
+        }
         accent={accent}
       />
 

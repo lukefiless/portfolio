@@ -131,8 +131,8 @@ export default function PageHead({
       </header>
 
       {/*
-       * The head rule. Full width and in the accent, where SynopsisPanel's is
-       * short and centred — this is the page announcing itself as a sheet.
+       * The head rule. Full width and in the accent — the page announcing
+       * itself as a sheet.
        */}
       <div
         aria-hidden="true"

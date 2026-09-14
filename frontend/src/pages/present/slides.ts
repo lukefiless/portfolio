@@ -160,13 +160,30 @@ export type ActTrack =
    * "slides that happen to be flat" would have to reimplement all of it.
    */
   | {
-      kind: "synopsis";
+      kind: "recap";
 
-      /** The job title being asked for. */
-      role: string;
+      /** The page's headline. */
+      title: string;
 
-      /** What the deck covered. Two columns on a wide screen. */
-      points: readonly SynopsisPoint[];
+      /**
+       * What already exists. Three is what the row is drawn for.
+       *
+       * Three rather than every service the deck named, because this row is
+       * evidence and not an index — the projects slide already listed the six
+       * processes by name, and repeating that list here would spend the
+       * closing page re-reading the middle of the deck.
+       */
+      /**
+       * The two sides of the divide, named. Left is the old way, right is how
+       * it works now — see `RecapPanel`, which sets them either side of one
+       * vertical rule.
+       */
+      headings: { was: string; now: string };
+
+      built: readonly RecapBuild[];
+
+      /** The word, its three parts, and the line that ends the deck. */
+      close: RecapClose;
     }
   | {
       kind: "market";
@@ -311,13 +328,59 @@ export type ActTrack =
       automated: readonly Keyframe<number>[];
     };
 
-/** One line of the closing summary. */
-export interface SynopsisPoint {
-  /** The beat being summarised. Keep it short; it is set large. */
+/**
+ * One thing that already exists, on the closing page.
+ *
+ * `before` is the field that does the work. A service named on its own is a
+ * word; the same service named against the manual job it ended is evidence,
+ * and evidence is what the page is for. Leave it empty and the line is
+ * omitted, but think twice — a build with nothing to say about what it
+ * replaced is a build the room has no way to size.
+ */
+export interface RecapBuild {
+  /** What it is. A few words. */
+  name: string;
+
+  /** What it does now, in one line. */
+  result: string;
+
+  /** What it replaced. Empty omits the line. */
+  before: string;
+}
+
+/**
+ * One third of the word, on the closing page.
+ *
+ * The deck spent three pages taking "DevSecOps" apart a syllable at a time —
+ * see `DevSecOpsHeader`. The recap puts it back together: the three parts sit
+ * side by side at full ink, which is the only place in the deck the whole word
+ * is lit at once.
+ */
+export interface RecapPart {
+  /** Which third. The syllable itself is drawn from this. */
+  part: DevSecOpsPart;
+
+  /** What the syllable is short for. */
   label: string;
 
-  /** One line on what it showed. */
+  /** What the deck showed for it. One or two lines; keep it short. */
   note: string;
+}
+
+/**
+ * The close: the word reassembled, and the line the deck ends on.
+ *
+ * It carries everything after the three builds in the timeline above — the
+ * reorganised processes, the apps, the model, the systems owned rather than
+ * rented, the controls, and the operations half of the job. The timeline is
+ * what was fixed; this is the whole of what is being offered.
+ */
+export interface RecapClose {
+  /** The three parts, in the order they are said. */
+  parts: readonly RecapPart[];
+
+  /** The last line of the deck. Empty omits it. */
+  returns: string;
 }
 
 /**
@@ -1466,8 +1529,8 @@ const deck: readonly Slide[] = [
     id: "handoff",
 
     /*
-     * CUT FROM THE RUNNING ORDER — its animation moved onto the synopsis
-     * slide's `entry`, where it plays as that page's way in rather than as a
+     * CUT FROM THE RUNNING ORDER — its animation moved onto the architecture
+     * drawing's `entry`, where it plays as that page's way in rather than as a
      * slide of its own that ends on an empty room. Kept because the tracks
      * below are the authored timing, and the entry copies them.
      */
@@ -2404,26 +2467,143 @@ const deck: readonly Slide[] = [
 
       areas: [
         {
-          label: "Client support",
-          note: "Building programs that allow us to get client feedback, answer questions, but more than anything let our clients voices feel heard.",
-        },
-        {
           label: "On the phone",
           note: "Filling in roles that might be lost from others leaving, I can take that place to help move the need and make sure our clients know their value.",
-        },
-        {
-          label: "The day-to-day",
-          note: "Building call lists, creating and optimizing project management systems, and making sure the day-to-day is running smoothly.",
         },
         {
           label: "Client events and seminars",
           note: "Make sure the events run seemlessly, get the data on who's there, have follow-ups, and get more clients in the door.",
         },
         {
+          label: "The day-to-day",
+          note: "Building call lists, creating and optimizing project management systems, and making sure the day-to-day is running smoothly.",
+        },
+        {
+          label: "Client support",
+          note: "Building programs that allow us to get client feedback, answer questions, but more than anything let our clients voices feel heard.",
+        },
+        {
           label: "Whatever is not getting done",
           note: "The unglamorous half of operations: make sure that the cracks aren't just fixed, building systems so there are no cracks to begin with.",
         },
       ],
+    },
+  },
+
+  /*
+   * THE RECAP — WHAT THIS ADDS UP TO
+   *
+   * The deck's last page, and the only one that looks backwards. Every slide
+   * before it makes a single point with a single object; this one stops moving
+   * and puts the case together.
+   *
+   * IT IS AN ARGUMENT IN THREE MOVES, not a summary of the running order. The
+   * first draft was the running order — six beats, six matching cells — and it
+   * read as an inventory: the mission, a shipped service and the ask all the
+   * same size, with the page's real content buried in the last box. What the
+   * room needs at the end is the shape of the case. Three things exist.
+   * Therefore a role. Therefore a return. See `RecapPanel`.
+   *
+   * `bare: true` because the panel carries its own heading — the deck's copy
+   * layer would put a second title over the top of it.
+   */
+  {
+    id: "recap",
+
+    /*
+     * The file the handoff took out is still in the corner, as it has been on
+     * every page since. This is the last of them, and dropping the mark here
+     * would take it away on the one frame the room sits with longest.
+     */
+    fileMark: true,
+
+    duration: 40,
+    bare: true,
+    copy: [],
+
+    /* Nothing is rendered in 3D but the corner mark, which is camera-pinned. */
+    camera: [{ at: 0, value: [0, 3, 18] }],
+    target: [{ at: 0, value: [0, 2, 0] }],
+
+    /* GOLD, like the three pages it closes. See the note on `ops`. */
+    accent: [{ at: 0, value: GOLD }],
+    background: [{ at: 0, value: BACKGROUND }],
+
+    act: {
+      kind: "recap",
+
+      title: "What this adds up to.",
+
+      /* ----------------------------------------------------------------
+       * EDIT THE RECAP HERE. All of it is wording, and all of it is a
+       * first draft written from what the deck actually shows — say it
+       * the way you would say it in the room.
+       *
+       * KEEP EVERY LINE SHORT. The page sets these large and light, and
+       * that only works while a claim is one line — `result` to about
+       * eight words, `before` to about ten, `returns` to a sentence.
+       * The first draft ran to three and four lines each and the page
+       * went back to looking like a document.
+       *
+       * `built` is the evidence: three things that exist, each against
+       * the manual job it ended. Keep it to three. The projects slide
+       * already named the six processes, and listing them again here
+       * spends the closing page re-reading the middle of the deck.
+       *
+       * `ask` is the point. `role` is the last big type in the deck,
+       * `note` says what it covers, and `returns` is the final line —
+       * what the company gets, in their terms and not yours.
+       * ---------------------------------------------------------------- */
+      headings: { was: "How it was", now: "How it works now" },
+
+      built: [
+        {
+          name: "Data sync",
+          result: "Records arrive on their own, every five minutes.",
+          before: "Was a daily export carried across by hand, stale by close.",
+        },
+        {
+          name: "Six services",
+          result: "Dashboards, importers, the call list, timecards, cleanup.",
+          before: "Was done by hand when there was time, and skipped when there was not.",
+        },
+        {
+          name: "Onboarding",
+          result: "Every client tracked start to finish.",
+          before: "Was tracked by hand, and nobody could see it at a glance.",
+        },
+      ],
+
+      close: {
+        /*
+         * THE WORD, PUT BACK TOGETHER. Everything after the three builds
+         * above lands in one of these three: the reorganised processes,
+         * the apps, the model, the systems owned rather than rented, the
+         * controls, and the operations half of the job. Keep each note to
+         * a line or two — three columns at the foot of a slide is not
+         * where a paragraph goes.
+         */
+        parts: [
+          {
+            part: "dev",
+            label: "Software Development",
+            note: "One process became many, each on its own schedule. Five apps end to end, a model of our own on site, and the systems owned rather than rented.",
+          },
+          {
+            part: "sec",
+            label: "Cyber Security",
+            note: "Reg S-P, Books and Records, SOC 2 — every control named with the place it actually lives in the stack.",
+          },
+          {
+            part: "ops",
+            label: "Operations",
+            note: "The phone, client events, the day-to-day, client support, and whatever is not getting done.",
+          },
+        ],
+
+        /* The last line of the deck. */
+        returns: "The gap between LPL and Wealthbox is the next one to close — and everything above keeps running while it is.",
+      },
     },
   },
 
